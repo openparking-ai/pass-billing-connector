@@ -130,6 +130,63 @@ jobs:
             user=postgres password=postgres
         run: pytest -q
 
+      - name: The database tests really ran, rather than skipping
+        # The step above fails on an unrun GUARANTEE. This is the narrower check
+        # on the same thing, and it exists because the two failure modes look
+        # identical from a green tick: a skipped database test and a passing one
+        # both leave the suite green if the guarantee guard is ever loosened.
+        env:
+          PASS_BILLING_CONNECTOR_TEST_DSN: >-
+            host=localhost port=5432 dbname=postgres
+            user=postgres password=postgres
+        run: |
+          set -o pipefail
+          pytest -q -m needs_postgres | tee "$RUNNER_TEMP/db.txt"
+          grep -qE '[0-9]+ passed' "$RUNNER_TEMP/db.txt"
+          if grep -q 'skipped' "$RUNNER_TEMP/db.txt"; then
+            echo "a database test skipped, so the guarantees it carries are unproven:"
+            cat "$RUNNER_TEMP/db.txt"; exit 1
+          fi
+
+      - name: The command line works with nothing but this package and the two scripts
+        # The definition of done for a connector, as a check: the installed
+        # script answers. BOTH refusals are asserted -- the connector's own
+        # (exit 2, a sentence, no report) and a module's (exit 1, a report
+        # naming the module's words) -- because a check that only ever runs
+        # the happy path cannot tell a working refusal from one that reports
+        # nothing. No DSN is set here on purpose: the module's configuration
+        # sentence is what the second run must carry.
+        run: |
+          set -o pipefail
+          echo '{"links": []}' > "$RUNNER_TEMP/empty.json"
+          pass-billing-connector sync --links "$RUNNER_TEMP/empty.json" \
+            --at 2026-09-16T09:00:00-06:00 | tee "$RUNNER_TEMP/empty.txt"
+          grep -q '"converged": true' "$RUNNER_TEMP/empty.txt"
+
+          set +e
+          pass-billing-connector sync --links "$RUNNER_TEMP/empty.json" \
+            --at 2026-09-16T09:00:00 2> "$RUNNER_TEMP/naive.txt"
+          naive_exit=$?
+          set -e
+          test "$naive_exit" = 2 || { echo "a naive instant did not exit 2"; exit 1; }
+          grep -q "offset" "$RUNNER_TEMP/naive.txt"
+
+          cat > "$RUNNER_TEMP/one.json" <<'JSON'
+          {"links": [{"pass_tenant": "11111111-1111-1111-1111-111111111111", "pass_id": "p",
+                      "pass_garage": "g", "billing_tenant": "22222222-2222-2222-2222-222222222222",
+                      "agreement_id": "a"}]}
+          JSON
+          set +e
+          pass-billing-connector sync --links "$RUNNER_TEMP/one.json" \
+            --at 2026-09-16T09:00:00-06:00 > "$RUNNER_TEMP/one.txt"
+          one_exit=$?
+          set -e
+          test "$one_exit" = 1 || { echo "a link no module can answer did not exit 1"; exit 1; }
+          grep -q "GARAGE_PASS_CONFIGURATION" "$RUNNER_TEMP/one.txt"
+          grep -q "MONTHLY_BILLING_CONFIGURATION" "$RUNNER_TEMP/one.txt"
+          grep -q "GARAGE_PASS_DSN is not set" "$RUNNER_TEMP/one.txt"
+          echo "the connector answered, and refused, for the right reasons"
+
   controls:
     name: controls
     runs-on: ubuntu-latest

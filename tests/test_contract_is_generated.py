@@ -77,8 +77,8 @@ def test_the_guarantee_count_is_derived_not_typed():
         '    "C99": ("PLANTED: a guarantee that exists only to move the count."),\n    "C2": (',
     ):
         after = rendered()
-    count_before = before.split("That is ")[1].split(" guarantees")[0]
-    count_after = after.split("That is ")[1].split(" guarantees")[0]
+    count_before = before.split("That is ")[-1].split(" guarantees")[0]
+    count_after = after.split("That is ")[-1].split(" guarantees")[0]
     assert int(count_after) == int(count_before) + 1, (count_before, count_after)
 
 
