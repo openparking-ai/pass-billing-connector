@@ -3,7 +3,10 @@
 **For each stated link — a garage pass on one side, an outside-registrar
 agreement in monthly billing on the other — on the day given, make billing's
 register for that agreement equal the pass's live register, and say loudly
-whatever cannot be made equal.** That one question, and nothing else.
+whatever cannot be made equal.** That one question, and nothing else. Billing's
+register is current state with no effective time — a release takes effect when
+it is made — so a run given a past instant makes *today's* billing register
+equal that past day's live register, and the next run for today repairs it.
 
 ```
 $ pass-billing-connector sync --links links.json --at 2026-09-16T09:00:00-06:00
