@@ -11,7 +11,10 @@ that garage answered not covered. Measured in the outside round's L3 (538 of
 
 Now it is named from the final read: `PASS_REGISTER_ASYMMETRIC`, the
 identity, the garages that hold it and the garages that do not; the link
-does not converge; nothing is registered or released on the strength of it;
+does not converge; the finding is raised after the run's own registers and
+releases and causes no write of its own (the identity the first read showed
+live was registered at every covered garage in step 2, as every live
+identity is, and the next run makes the same register and names it again);
 `expected` and the divergence lines are untouched (the L3's property
 `converged => billing == expected` still holds -- the finding is a new
 conjunct, not a rebuilt expectation).
