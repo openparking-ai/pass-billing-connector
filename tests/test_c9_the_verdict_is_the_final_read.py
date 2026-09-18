@@ -19,6 +19,13 @@ picture of the desired set is never a licence to delete. THE REFUSALS ARE
 CHECKED AGAIN ON THE FINAL READ: a covered set or a registrar that moved
 under the run is named and the link does not converge.
 
+THE REPORT CLAIMS NOTHING THE RUN COULD NOT LEARN. Measured at the re-gate:
+with the held car's rows now kept, each was reported as a row "the pass's
+live register stores nothing in" -- which the run does not know, and its own
+`STORED_FORM_UNKNOWN` two lines up says it does not. A `billing_only` row
+while some live identity's form is unknown names the identities whose forms
+are unknown and does not call the row foreign.
+
 The pure half fakes the two doors (`sync.doors`) so the connector's own logic
 can be driven through states the real modules cannot be made to produce on
 cue -- a pass changing between the first and the final read.
@@ -216,11 +223,98 @@ def test_a_register_the_door_did_not_answer_stops_the_links_releases(monkeypatch
     assert words in unknown.detail and outcome in unknown.detail
     assert "nothing is released" in unknown.detail
     assert result.converged is False
-    # The verdict still comes from the final read: the stale row is a
-    # divergence there, HELD-1's rows are not (its forms are unknown, not wrong).
+    # The verdict still comes from the final read: every row no KNOWN form
+    # accounts for is named there -- HELD-1's own two and the stale one alike,
+    # because the run cannot tell them apart (HELD-1's forms are unknown, not
+    # wrong) -- and each one says so; see the test below for the sentence.
     assert [(f.garage, f.form, f.side) for f in result.findings if f.code == "DIVERGENCE"] == [
         ("garage-a", "held1", "billing_only"), ("garage-a", "stale", "billing_only"),
         ("garage-b", "HELD-1", "billing_only")]
+
+
+FOREIGN = "the pass's live register stores nothing in that form there"
+UNKNOWN = ("no live identity whose stored form this run learned stores in it there, and the "
+           "stored forms of {ids} are not known to this run, so whether this row is theirs is "
+           "not known.")
+
+
+@pytest.mark.guarantee("C9")
+@pytest.mark.parametrize("outcome, words", [
+    ("refused", "exit 2: REFUSED — REFUSAL_VEHICLE_ALREADY_REGISTERED: held by ag-2"),
+    ("failed", "exit 1: a store command needs --dsn or MONTHLY_BILLING_DSN."),
+    ("unparseable", "exit 0: vehicle registered to agreement ag-1\n  something else"),
+])
+def test_a_row_the_run_could_not_account_for_is_not_called_foreign(monkeypatch, outcome,
+                                                                    words):
+    """THE RE-GATE'S FINDING. HELD-1's register did not answer, so the run
+    learned no form for it; billing holds HELD-1's two rows and one stale
+    row, and the run cannot tell which is which -- it never reimplements
+    billing's normalisation. Every one of the three is reported, and every
+    one says what is true: no KNOWN form accounts for it, HELD-1's forms are
+    not known, so whose it is is not known. None says the pass stores
+    nothing in that form -- the sentence the re-gate read at `285fd80`.
+    The control is in the same test: with every register `done`, a stray
+    row IS one no live identity stores in, and the plain sentence stands."""
+    pass_ = shown([("HELD-1", "garage-a"), ("HELD-1", "garage-b"),
+                   ("FREE-2", "garage-a"), ("FREE-2", "garage-b")])
+    held = [("garage-a", "held1"), ("garage-b", "HELD-1"), ("garage-a", "stale")]
+    after = register(held + [("garage-a", "free2"), ("garage-b", "FREE-2")])
+    fake = FakeDoors([pass_, pass_], [register(held), after, after],
+                     register_answers={"HELD-1": Answer(outcome, {}, words)})
+    monkeypatch.setattr(sync_module, "doors", fake)
+    result = sync_link(LINK, AT, D)
+    rows = [f for f in result.findings if f.code == "DIVERGENCE"]
+    assert [(f.garage, f.form, f.side) for f in rows] == [
+        ("garage-a", "held1", "billing_only"), ("garage-a", "stale", "billing_only"),
+        ("garage-b", "HELD-1", "billing_only")]
+    for row in rows:
+        assert row.detail == (f"billing holds {row.form!r} at {row.garage!r}; "
+                              + UNKNOWN.format(ids=["HELD-1"])), row.detail
+        assert FOREIGN not in row.detail
+        assert row.identities == ("HELD-1",)
+    # The one finding that DOES say nothing was released is the one that knows it.
+    (unknown,) = [f for f in result.findings if f.code == "STORED_FORM_UNKNOWN"]
+    assert "nothing is released for this link" in unknown.detail
+
+    # Control: every register answered, one stray row -- the plain sentence.
+    pass_ = shown([("AB-123", "garage-a"), ("AB-123", "garage-b")])
+    final = register([("garage-a", "ab123"), ("garage-b", "AB-123"), ("garage-b", "stray")])
+    fake = FakeDoors([pass_, pass_], [register([]), register([]), final])
+    monkeypatch.setattr(sync_module, "doors", fake)
+    result = sync_link(LINK, AT, D)
+    (stray,) = [f for f in result.findings if f.code == "DIVERGENCE"]
+    assert stray.detail == f"billing holds 'stray' at 'garage-b'; {FOREIGN}."
+    assert stray.identities == ()
+    assert [f.code for f in result.findings] == ["DIVERGENCE"]
+
+
+@pytest.mark.guarantee("C9")
+def test_a_row_left_beside_an_identity_live_only_on_the_final_read_is_not_called_foreign(
+    monkeypatch,
+):
+    """The OTHER path to an unknown form: NEW-2 appears on the pass under the
+    run, so it was never registered and its forms are unknown. The releases
+    DID run here (the stale row `gone` went), so the sentence must not say
+    nothing was released -- and does not; it names NEW-2 as the identity
+    whose forms are unknown, and the row `left` is not called foreign."""
+    first = shown([("AB-123", "garage-a"), ("AB-123", "garage-b")])
+    changed = shown([("AB-123", "garage-a"), ("AB-123", "garage-b"),
+                     ("NEW-2", "garage-a"), ("NEW-2", "garage-b")])
+    before = register([("garage-a", "ab123"), ("garage-b", "AB-123"), ("garage-b", "gone")])
+    after = register([("garage-a", "ab123"), ("garage-b", "AB-123"), ("garage-a", "left")])
+    fake = FakeDoors([first, changed], [register([]), before, after])
+    monkeypatch.setattr(sync_module, "doors", fake)
+    result = sync_link(LINK, AT, D)
+    assert [c for c in fake.calls if c[0] == "release-vehicle"] == [
+        ("release-vehicle", "gone", "garage-b")]
+    codes = [f.code for f in result.findings]
+    assert codes == ["PASS_CHANGED_DURING_RUN", "STORED_FORM_UNKNOWN", "DIVERGENCE"]
+    (left,) = [f for f in result.findings if f.code == "DIVERGENCE"]
+    assert (left.garage, left.form, left.side) == ("garage-a", "left", "billing_only")
+    assert left.detail == "billing holds 'left' at 'garage-a'; " + UNKNOWN.format(ids=["NEW-2"])
+    assert left.identities == ("NEW-2",)
+    assert "released" not in left.detail
+    assert result.converged is False
 
 
 @pytest.mark.guarantee("C9")
@@ -363,6 +457,16 @@ def test_a_held_car_whose_register_did_not_answer_keeps_its_rows_and_nothing_is_
     assert one["converged"] is False
     assert pair.mb_rows("ag-1") == held
     assert (covered("garage-a"), covered("garage-b")) == ("COVERED", "COVERED")
+    # The kept rows -- LIVE-1's own two and the stale two alike -- are each
+    # named, and none is called a row the pass stores nothing in: the run
+    # learned no form for LIVE-1 and says exactly that on every one.
+    rows = [f for f in one["findings"] if f["code"] == "DIVERGENCE"]
+    assert sorted((f["garage"], f["form"]) for f in rows) == sorted(held)
+    for row in rows:
+        assert row["side"] == "billing_only" and row["identities"] == ["LIVE-1"]
+        assert row["detail"] == (f"billing holds {row['form']!r} at {row['garage']!r}; "
+                                 + UNKNOWN.format(ids=["LIVE-1"])), row["detail"]
+        assert FOREIGN not in row["detail"]
 
     # The next run, the real door throughout: the stale row goes, LIVE-1 stays.
     monkeypatch.setenv("PATH", os.environ["PATH"].split(":", 1)[1])

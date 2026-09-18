@@ -32,7 +32,13 @@ THE ORDER, AND WHY.
    registers that did answer stand, ``STORED_FORM_UNKNOWN`` names the identity
    and the door's words, the link does not converge, and the next run
    re-reads. (Measured before this rule existed: one transient failure on a
-   held car's register released that car's rows at every garage.)
+   held car's register released that car's rows at every garage.) A
+   ``refused`` register -- the door's exit 2, a car held by ANOTHER
+   agreement -- is not transient: it stands until an operator moves the car,
+   and until then this link releases nothing on every run, loudly (exit 1,
+   the finding, the identity, the door's words). That is this rule holding,
+   not a fault of the connector's: it cannot tell a held car from a door that
+   did not answer, and deletes nothing on either.
 
 4. **Release by stored form, never by raw identity, AT THE GARAGE THAT
    STORES IT.** Every row billing holds at a garage whose form is not among
@@ -56,7 +62,11 @@ THE ORDER, AND WHY.
    answers. A difference either way is a DIVERGENCE, per garage, per form,
    naming the side that holds it; a live identity whose registration the
    door refused has no known form and cannot converge; a pass that changed
-   under the run is named. **And step 1's refusals are checked again against
+   under the run is named. A row billing holds that no KNOWN form accounts
+   for, while some live identity's form is unknown, may be that identity's:
+   its sentence names the identities whose forms the run does not know and
+   does not call the row foreign -- the report claims nothing the run could
+   not learn. **And step 1's refusals are checked again against
    the final reads**: a registrar, a garage set, an unreadable record, a row
    outside a set or an ambiguous id that changed under the run is named
    exactly as it would be at the start of a run, and the link does not
@@ -271,18 +281,22 @@ def sync_link(link: Link, at: str, day: date) -> LinkReport:
         expected |= {(g, f) for g, f in stored.items()}
     billing = {(row["garage"], row["identity_normalised"])
                for row in final_register.get("registrations") or ()}
+    # The identities whose stored forms this run never learned. A row billing
+    # holds that no KNOWN form accounts for may be one of theirs, and the
+    # sentence on it says so rather than calling the row foreign.
+    unknown = tuple(sorted({f.identity for f in findings
+                            if f.code == FINDING_STORED_FORM_UNKNOWN and f.identity}))
     for garage, form in sorted(billing - expected):
         findings.append(Finding(
-            FINDING_DIVERGENCE, f"billing holds {form!r} at {garage!r}; the pass's live "
-            "register stores nothing in that form there.", garage=garage, form=form,
-            side=SIDE_BILLING_ONLY,
+            FINDING_DIVERGENCE, f"billing holds {form!r} at {garage!r}; "
+            + _billing_only_tail(unknown), garage=garage, form=form, side=SIDE_BILLING_ONLY,
+            identities=unknown,
         ))
     for garage, form in sorted(expected - billing):
         findings.append(Finding(
             FINDING_DIVERGENCE, f"the pass's live register stores {form!r} at {garage!r}; "
             "billing holds no such row.", garage=garage, form=form, side=SIDE_PASS_ONLY,
         ))
-    unknown = any(f.code == FINDING_STORED_FORM_UNKNOWN for f in findings)
     converged = (billing == expected and not collisions and not unknown
                  and not final_refusals)
     return LinkReport(
@@ -297,6 +311,29 @@ def sync_link(link: Link, at: str, day: date) -> LinkReport:
 
 def _pairs(live: LiveRegister) -> list[list[str]]:
     return [list(p) for p in sorted(live.pairs())]
+
+
+def _billing_only_tail(unknown: tuple[str, ...]) -> str:
+    """The rest of a `billing_only` sentence, chosen by what the run knows.
+
+    `expected` is built from the forms the door answered, so when every live
+    identity's register came back `done` a row outside it is one no live
+    identity stores in -- and the sentence says so. When a live identity's
+    stored form is NOT known to the run (`STORED_FORM_UNKNOWN`: a register the
+    door did not answer, or an identity live only on the final read), the run
+    cannot tell that identity's rows from stale ones -- it never reimplements
+    billing's normalisation -- so the sentence names the identities whose
+    forms it does not know and claims nothing about whose the row is.
+    (Measured before this sentence existed: a held car's own rows, kept by
+    the rule above, were reported as rows the pass stores nothing in.)
+    """
+    if not unknown:
+        return "the pass's live register stores nothing in that form there."
+    return (
+        "no live identity whose stored form this run learned stores in it there, and the "
+        f"stored forms of {list(unknown)} are not known to this run, so whether this row is "
+        "theirs is not known."
+    )
 
 
 def _register(link: Link, identity: str, at: str, garages: tuple[str, ...], reason: str,

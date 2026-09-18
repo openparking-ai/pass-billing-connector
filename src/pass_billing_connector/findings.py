@@ -117,7 +117,11 @@ FINDINGS: dict[str, str] = {
         "hold for that identity would look stale, and an incomplete picture of the "
         "desired set is never a licence to delete; the registers that did answer "
         "stand, and the next run re-reads. The link does not converge. Also raised "
-        "on the final read for an identity live there that this run did not register."
+        "on the final read for an identity live there that this run did not register. "
+        "A `refused` register -- a car held by ANOTHER agreement -- is not transient: it "
+        "stands until an operator moves the car, and until then the link releases "
+        "nothing on every run, with this finding each time. That is the rule holding, "
+        "not a fault of the connector's."
     ),
     FINDING_PASS_CHANGED_DURING_RUN: (
         "The final read of the pass shows a live register different from the one the "
@@ -127,7 +131,11 @@ FINDINGS: dict[str, str] = {
     FINDING_DIVERGENCE: (
         "After the run's writes, the final read of billing's register differs from "
         "the pass's live register: one (garage, form) that is on one side only. "
-        "Exit 1. The finding names the garage, the form and which side holds it."
+        "Exit 1. The finding names the garage, the form and which side holds it. A "
+        "`billing_only` row while some live identity's stored form is unknown to the "
+        "run (`STORED_FORM_UNKNOWN`) may be that identity's: the run cannot tell, so "
+        "the finding's sentence says so, `identities` names whose forms are unknown, "
+        "and the row is not called foreign."
     ),
 }
 
@@ -135,8 +143,8 @@ FINDINGS: dict[str, str] = {
 SIDE_BILLING_ONLY = "billing_only"
 SIDE_PASS_ONLY = "pass_only"
 SIDES: dict[str, str] = {
-    SIDE_BILLING_ONLY: "billing holds a row at this garage in this form; the pass has no "
-    "live identity that stores in it",
+    SIDE_BILLING_ONLY: "billing holds a row at this garage in this form; no live identity "
+    "whose stored form the run learned stores in it there",
     SIDE_PASS_ONLY: "the pass has a live identity storing in this form at this garage; "
     "billing holds no such row",
 }

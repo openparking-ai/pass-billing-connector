@@ -50,14 +50,20 @@ that link, and the run says so. A live identity whose register the door did
 not answer `done` — refused, failed, or unreadable — stops the link's
 releases the same way: the connector cannot tell "not registered" from "the
 door did not tell me", so a car billing already holds keeps its rows, the
-finding names the identity, and the next run re-reads.
+finding names the identity, and the next run re-reads. A *refused* register —
+a car held by another agreement — is not transient: it stands until an
+operator moves the car, and until then that link releases nothing on every
+run, saying so each time. That is the rule holding, not a fault.
 
 **The verdict is the final read.** After the writes both sides are read
 again. Any difference is a divergence, named per link, per garage, per form,
 with the side that holds it; and the refusals of step 1 are checked again
 against the final reads, so a covered set or a registrar that moved under the
-run is named and the link does not converge. A run killed half-way is
-repaired by the next run from fresh reads.
+run is named and the link does not converge. The report claims nothing the
+run could not learn: a row left beside an identity whose form the run never
+got is named as one whose owner is not known, not as a row the pass stores
+nothing in. A run killed half-way is repaired by the next run from fresh
+reads.
 
 **Nothing personal travels**, and **nothing here can refuse an exit**: the
 connector touches registrations only, and garage-pass's own access answer at

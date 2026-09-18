@@ -293,6 +293,22 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "transient door failure uncovers a held car at every garage -- the C1 gate's "
         "blocker, measured before the rule existed",
     ),
+    "C9/unknown-row": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "sync.py",
+        source(
+            "    if not unknown:",
+            '        return "the pass\'s live register stores nothing in that form there."',
+        ),
+        source(
+            "    if True:  # PLANTED: the row is called foreign whatever the run knows",
+            '        return "the pass\'s live register stores nothing in that form there."',
+        ),
+        "a row billing holds beside an identity whose form the run never learned is "
+        "reported as one the pass stores nothing in: the report states as fact what "
+        "the run does not know, two lines under its own STORED_FORM_UNKNOWN -- the "
+        "re-gate's finding at 285fd80",
+    ),
     "C9/final-refusals": (
         "tests/test_c9_the_verdict_is_the_final_read.py",
         "sync.py",
