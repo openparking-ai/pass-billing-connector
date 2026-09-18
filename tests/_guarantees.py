@@ -175,6 +175,19 @@ GUARANTEES: dict[str, str] = {
         "every linked fixture DIFFER in billing identity rule, and the swap plates "
         "fold to one form under the folded rule and to two under the exact rule."
     ),
+    "C17": (
+        "THE PER-GARAGE REGISTER IS COMPARED, OR IT IS NAMED. An identity live at "
+        "some of the garages the link compares and not at others is a picture "
+        "billing's door cannot be made to hold -- it registers a car at every covered "
+        "garage or at none -- and the identity-set comparison alone would call it "
+        "converged while billing covered the car at a garage the pass does not. So "
+        "the run names it from the final read (`PASS_REGISTER_ASYMMETRIC`: the "
+        "identity, the garages that hold it, the garages that do not), the link does "
+        "not converge, exit 1, and nothing is registered or released on the strength "
+        "of it; `expected` and the divergence lines are what they were. Not reachable "
+        "through garage-pass's own verbs at the pinned commit; a row written past "
+        "them is."
+    ),
 }
 
 
