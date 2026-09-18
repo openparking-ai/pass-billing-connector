@@ -49,6 +49,14 @@ No clock: the instant is required, ISO with an offset. The day compared with
 garage-pass's days is the DATE OF THAT INSTANT AS WRITTEN, not converted to
 any garage's zone — garage-pass's own convention for a registration's
 `effective_day`. The same instant reaches billing's `register-vehicle --at`.
+The consequence, across garages in different zones: each module's own lane
+door reads a registration on the garage's local day, while the run reads it
+on the day as written. At an instant that is already tomorrow at one garage,
+a car effective tomorrow is not yet live to the run and not in billing, yet
+garage-pass's lane at that garage already answers covered — and a car ending
+tomorrow is the mirror. For the length of the zone gap the two lanes can
+answer differently for the same car at that garage, with the run converged.
+That is the rule, not a fault.
 `release-vehicle` takes no instant at the pinned commit: billing's register is
 current state with no effective time, so a release takes effect when it is
 made, and what billing holds after a run is the live set as of the moment the
