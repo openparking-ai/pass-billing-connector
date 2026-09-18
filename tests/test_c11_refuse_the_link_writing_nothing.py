@@ -7,11 +7,12 @@ THAT MODULE'S refusal, surfaced on the link by name, never an empty register.
 Driven through the real modules where the modules can produce the state:
 a registrar that is this module's own, garage sets that differ, a garage
 stored unreadable (a raw write as the owner -- the only way one exists),
-wrong tenants. Two states neither module can be made to produce on cue --
-a garage-pass row at a garage the pass does not name (its migration 0004
-RESTRICTs it) and a billing row outside the covered set (a stored version
-releases them) -- are driven through faked reads, the shapes the reads
-print at the pinned commits.
+wrong tenants, and a covered set the door's printed line cannot tell apart
+(`g` and `g: 2` -- both modules accept either id). Two states neither module
+can be made to produce on cue -- a garage-pass row at a garage the pass does
+not name (its migration 0004 RESTRICTs it) and a billing row outside the
+covered set (a stored version releases them) -- are driven through faked
+reads, the shapes the reads print at the pinned commits.
 """
 
 from __future__ import annotations
@@ -153,3 +154,29 @@ def test_a_wrong_billing_tenant_is_monthly_billing_own_refusal_never_an_empty_re
     finding = _one_refusal(pair, monkeypatch, wrong, "MONTHLY_BILLING_REFUSED")
     assert "NOT FOUND" in finding["detail"] and "ag-1" in finding["detail"]
     assert pair.mb_rows("ag-1") == set(), "the right tenant's register was not touched"
+
+
+@needs_databases
+@pytest.mark.guarantee("C11")
+def test_a_covered_set_the_doors_line_cannot_tell_apart_refuses_by_name(pair, monkeypatch):
+    """Both modules accept `g` and `g: 2` as garage ids. A pass over both,
+    linked to an agreement covering both, is refused before any write: the
+    car is live and NOT registered afterwards, and a foreign row that a
+    healthy link would release is still there."""
+    from harness import GARAGE_A, GARAGE_B, mb_agreement, mb_garage
+
+    ids = ("g", "g: 2")
+    for (garage_id, zone) in zip(ids, ("America/Denver", "Europe/Berlin"), strict=True):
+        pair.gp_garage(garage_id, zone)
+    pair.gp_pass("pass-1", ids, valid_from="2026-01-01", valid_to="2026-12-31")
+    pair.mb_seed(
+        tuple(mb_garage(i, z, r) for i, (_g, z, r) in zip(ids, (GARAGE_A, GARAGE_B), strict=True)),
+        (mb_agreement("ag-1", "g", ids),),
+    )
+    pair.gp_register("pass-1", "g", "AB-123", "2026-09-01")
+    pair.mb_register("ag-1", "Foreign 9")
+    before = pair.mb_rows("ag-1")
+    assert before == {("g", "foreign9"), ("g: 2", "Foreign 9")}
+    finding = _one_refusal(pair, monkeypatch, pair.link(pass_garage="g"), "GARAGE_IDS_AMBIGUOUS")
+    assert finding["garage"] == "g: 2"
+    assert pair.mb_rows("ag-1") == before

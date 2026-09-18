@@ -38,6 +38,9 @@ class Action:
     reason: str
     identity: str | None = None
     form: str | None = None
+    #: The ONE covered garage a release named (`release-vehicle --garage`);
+    #: null on a register, which the door makes at every covered garage.
+    garage: str | None = None
     #: What the door printed per garage, on a `done` outcome.
     stored: dict[str, str] = field(default_factory=dict)
     #: The door's own sentence, on any other outcome.

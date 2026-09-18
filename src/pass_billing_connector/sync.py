@@ -5,9 +5,11 @@ THE ORDER, AND WHY.
 
 1. **Read both, and refuse the link -- writing nothing -- on anything that
    makes "equal" undefined**: a registrar that is not `outside`, garage sets
-   that differ, a pass or garage stored unreadable, rows outside either set.
-   Each refusal is a finding by name; a module that would not answer the read
-   is a finding carrying the module's own words.
+   that differ, a pass or garage stored unreadable, rows outside either set,
+   a covered set whose ids the door's printed line cannot tell apart (one id
+   is another plus `: ` plus anything). Each refusal is a finding by name; a
+   module that would not answer the read is a finding carrying the module's
+   own words.
 
 2. **Register every live identity** (``live.py``), as garage-pass recorded it,
    through ``register-vehicle`` -- idempotent at the door: a row already this
@@ -22,26 +24,22 @@ THE ORDER, AND WHY.
    for the link, it does not converge, and the report names the garage, the
    form and both identities.
 
-4. **Release by stored form, never by raw identity.** Every row billing holds
-   at a garage whose form is not among step 2's forms at that garage is
-   released by passing that form back to ``release-vehicle``. That relies on
-   billing's normalisation being idempotent -- ``n(n(x)) == n(x)`` -- which
-   was measured at the pinned commit over every code point under every rule
-   before this was built, and which ``tests/test_c7_...`` measures again at
-   the door.
+4. **Release by stored form, never by raw identity, AT THE GARAGE THAT
+   STORES IT.** Every row billing holds at a garage whose form is not among
+   step 2's forms at that garage is released by passing that form back to
+   ``release-vehicle --garage`` naming that garage. That relies on billing's
+   normalisation being idempotent -- ``n(n(x)) == n(x)`` -- which was measured
+   at the pinned commit over every code point under every rule before this
+   was built, and which ``tests/test_c7_...`` measures again at the door.
 
-   **AND A RELEASE FANS OUT.** ``release-vehicle`` takes ONE identity and
-   releases it at EVERY covered garage under each garage's own rule -- so
-   releasing a stale exact-rule form `ab123` at garage B also releases the
-   live folded-rule row `ab123` at garage A, which is `AB-123`'s. Measured at
-   the pinned commit, not reasoned about. So each release's printed answer is
-   compared with step 2's forms, and every identity whose form a release took
-   is REGISTERED AGAIN before the final read (``RELEASE_TOOK_A_LIVE_FORM``
-   names it). Between that release and that re-registration the row is
-   absent: a lane asking billing in that window sees the car not covered.
-   That window is a door call wide, it is stated, and the alternative -- the
-   connector deciding for itself which forms fold together -- is the
-   reimplementation this module forbids.
+   **AND THE GARAGE IS ALWAYS NAMED.** The door's unnamed release takes ONE
+   identity and releases it at EVERY covered garage under each garage's own
+   rule -- so releasing a stale exact-rule form `ab123` at garage B would also
+   release the live folded-rule row `ab123` at garage A, which is `AB-123`'s,
+   and the car would be uncovered at A until it was registered again.
+   Measured at the pinned commit, not reasoned about. Naming the garage
+   (billing's G46) takes the one row and no other, so no release of this
+   connector's ever takes a live car's row, and there is no window to state.
 
 5. **Read both again. The verdict is the final read.** Billing's rows, as
    (garage, form), against every live identity's forms from the door's
@@ -68,6 +66,7 @@ from pass_billing_connector import doors
 from pass_billing_connector.findings import (
     FINDING_COLLISION,
     FINDING_DIVERGENCE,
+    FINDING_GARAGE_IDS_AMBIGUOUS,
     FINDING_GARAGE_SETS_DIFFER,
     FINDING_PASS_CHANGED_DURING_RUN,
     FINDING_PASS_GARAGE_UNREADABLE,
@@ -75,12 +74,10 @@ from pass_billing_connector.findings import (
     FINDING_PASS_UNREADABLE,
     FINDING_REGISTER_ROWS_OUTSIDE_COVERED_SET,
     FINDING_REGISTRAR_NOT_OUTSIDE,
-    FINDING_RELEASE_TOOK_A_LIVE_FORM,
     FINDING_STORED_FORM_UNKNOWN,
     OUTCOME_DONE,
     REASON_LIVE,
     REASON_NOT_LIVE_FORM,
-    REASON_REASSERTED,
     SIDE_BILLING_ONLY,
     SIDE_PASS_ONLY,
 )
@@ -169,6 +166,13 @@ def _link_refusals(shown: dict, register: dict) -> list[Finding]:
             f"billing shows rows at {sorted(not_covered)}, which the latest version does not "
             "cover.",
         ))
+    for shorter, longer in doors.ambiguous_garage_ids(tuple(sorted(covered))):
+        findings.append(Finding(
+            FINDING_GARAGE_IDS_AMBIGUOUS,
+            f"covered garage {longer!r} is {shorter!r} plus the door's separator plus text, so "
+            f"a line the door prints for {shorter!r} can read as one for {longer!r}.",
+            garage=longer,
+        ))
     return findings
 
 
@@ -208,9 +212,9 @@ def sync_link(link: Link, at: str, day: date) -> LinkReport:
             garage=garage, form=form, identities=tuple(sorted(identities)),
         ))
 
-    # 4. Releases by stored form, and the re-assertion a fan-out forces.
+    # 4. Releases by stored form, each at the one garage that stores it.
     if not collisions:
-        _release_stale(link, at, garages, actions, identity_forms, forms, findings)
+        _release_stale(link, garages, actions, forms, findings)
 
     # 5. The final read decides.
     final_shown, final_register, read_findings = _read_both(link)
@@ -292,8 +296,7 @@ def _register(link: Link, identity: str, at: str, garages: tuple[str, ...], reas
         forms[(garage, form)].add(identity)
 
 
-def _release_stale(link: Link, at: str, garages: tuple[str, ...], actions: list[Action],
-                   identity_forms: dict[str, dict[str, str]],
+def _release_stale(link: Link, garages: tuple[str, ...], actions: list[Action],
                    forms: dict[tuple[str, str], set[str]], findings: list[Finding]) -> None:
     mid = doors.show_register(link.billing_tenant, link.agreement_id)
     if not mid.ok:
@@ -301,33 +304,16 @@ def _release_stale(link: Link, at: str, garages: tuple[str, ...], actions: list[
         return
     held = {(row["garage"], row["identity_normalised"])
             for row in mid.document.get("registrations") or ()}
-    # The stale rows, as (garage, form). One release can take several of them
-    # -- the fan-out -- so each release's answer is struck from the set before
-    # the next form is passed, and a form whose rows are already gone is not
-    # passed at all (the door would refuse it by name, having nothing left).
+    # The stale rows, as (garage, form), each released at ITS garage by ITS
+    # form: one row per door call, and the door's answer is that one row. A
+    # row whose form another garage's live car also stores in is no different
+    # -- the release named the garage, so the other garage's row is not
+    # reached. The final read decides what was taken.
     stale = {(garage, form) for (garage, form) in held if (garage, form) not in forms}
-    reassert: set[str] = set()
-    for form in sorted({form for (_garage, form) in stale}):
-        if not any(pending_form == form for (_g, pending_form) in stale):
-            continue
-        answer = doors.release_vehicle(link.billing_tenant, link.agreement_id, form, garages)
+    for garage, form in sorted(stale):
+        answer = doors.release_vehicle(link.billing_tenant, link.agreement_id, form, garage,
+                                       garages)
         actions.append(Action(
             action="release", outcome=answer.outcome, reason=REASON_NOT_LIVE_FORM, form=form,
-            stored=dict(answer.stored), detail=answer.reason,
+            garage=garage, stored=dict(answer.stored), detail=answer.reason,
         ))
-        if answer.outcome != OUTCOME_DONE:
-            continue
-        for garage, released in answer.stored.items():
-            stale.discard((garage, released))
-            taken = forms.get((garage, released))
-            if taken:
-                findings.append(Finding(
-                    FINDING_RELEASE_TOOK_A_LIVE_FORM,
-                    f"releasing {form!r} took {released!r} at {garage!r}, the stored form of "
-                    f"{sorted(taken)}; registered again.",
-                    garage=garage, form=released, identities=tuple(sorted(taken)),
-                ))
-                reassert |= taken
-    for identity in sorted(reassert):
-        _register(link, identity, at, garages, REASON_REASSERTED, actions, identity_forms,
-                  forms, findings)

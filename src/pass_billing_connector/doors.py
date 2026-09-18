@@ -32,14 +32,30 @@ monthly-billing (``show-register --tenant T --agreement A``)
   traceback, exit 1 -- both read here as configuration.
 
 monthly-billing (``register-vehicle --tenant T --agreement A --vehicle V --at I``
-and ``release-vehicle --tenant T --agreement A --vehicle V``)
-  exit 0, a first line saying what was done, then ONE LINE PER COVERED GARAGE,
-  exactly ``  at garage {garage id}: {stored form}`` (``cli.py:358`` at the
-  pinned commit). That line is the one piece of prose the connector relies on,
-  and ``STORED_FORM_LINE`` pins its spelling. It is matched against the
-  garage ids the register read already named -- the garage is a known string,
-  so the form after it may contain anything, ``: `` included. A line naming no
-  known garage is unparseable and is reported as such, never guessed at.
+and ``release-vehicle --tenant T --agreement A --vehicle V --garage G``)
+  exit 0, a first line saying what was done, then ONE LINE PER GARAGE THE
+  CALL REACHED, exactly ``  at garage {garage id}: {stored form}``
+  (``cli.py:365`` at the pinned commit): every covered garage for a register,
+  the ONE named garage for a release. That line is the one piece of prose the
+  connector relies on, and ``STORED_FORM_LINE`` pins its spelling. It is
+  matched against the garage ids the register read already named -- the
+  garage is a known string, so the form after it may contain anything, ``: ``
+  included. A line naming no known garage is unparseable and is reported as
+  such, never guessed at.
+
+  **Every release names its garage.** ``release-vehicle`` without ``--garage``
+  releases by identity at EVERY covered garage under each garage's own rule
+  (measured at the pinned commit): passing a stale exact-rule form back would
+  also take the live folded-rule row that spells the same at another garage.
+  With ``--garage G`` the door normalises the text under G's rule and deletes
+  at G alone, so a stored form passed back at the garage that stored it takes
+  exactly that row. The connector never calls the door's fan-out.
+
+  **An ambiguous covered set is refused before the line is read.** When one
+  covered id is another covered id plus the separator plus anything (``g`` and
+  ``g: 2``), a line ``  at garage g: 2: x1`` has two readings and no parser can
+  tell them apart; ``ambiguous_garage_ids`` names such pairs and the link is
+  refused before any write, so the parser is never asked that question.
 """
 
 from __future__ import annotations
@@ -59,6 +75,7 @@ from pass_billing_connector.findings import (
     OUTCOME_DONE,
     OUTCOME_FAILED,
     OUTCOME_REFUSED,
+    OUTCOME_UNPARSEABLE,
 )
 
 GARAGE_PASS = "garage-pass"
@@ -170,9 +187,13 @@ def register_vehicle(tenant: str, agreement: str, identity: str, at: str,
     return _door_answer(done, garages)
 
 
-def release_vehicle(tenant: str, agreement: str, form: str, garages: tuple[str, ...]) -> Answer:
+def release_vehicle(tenant: str, agreement: str, form: str, garage: str,
+                    garages: tuple[str, ...]) -> Answer:
+    """Release ONE stored form at the ONE covered garage that stores it. The
+    garage is always named: the door's unnamed release fans out by identity
+    over every covered garage, and the connector never asks for that."""
     done = _run([MONTHLY_BILLING, "release-vehicle", "--tenant", tenant, "--agreement",
-                 agreement, "--vehicle", form])
+                 agreement, "--vehicle", form, "--garage", garage])
     return _door_answer(done, garages)
 
 
@@ -180,7 +201,7 @@ def _door_answer(done: subprocess.CompletedProcess, garages: tuple[str, ...]) ->
     if done.returncode == 0:
         stored = stored_forms(done.stdout, garages)
         if stored is None:
-            return Answer(OUTCOME_FAILED, {}, "unparseable: " + _printed(done))
+            return Answer(OUTCOME_UNPARSEABLE, {}, _printed(done))
         return Answer(OUTCOME_DONE, stored, None)
     if done.returncode == MONTHLY_BILLING_EXIT_REFUSED:
         return Answer(OUTCOME_REFUSED, {}, _printed(done))
@@ -207,6 +228,18 @@ def stored_forms(stdout: str, garages: tuple[str, ...]) -> dict[str, str] | None
             return None
         stored[garage] = form
     return stored
+
+
+def ambiguous_garage_ids(garages: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
+    """Every (shorter, longer) pair of known ids where the longer one begins
+    with the shorter one PLUS THE SEPARATOR -- the one shape of covered set in
+    which a printed line has two readings. Sorted; empty for every set the
+    parser can read without guessing."""
+    return tuple(sorted(
+        (shorter, longer)
+        for shorter in garages for longer in garages
+        if longer != shorter and longer.startswith(shorter + _LINE_SEPARATOR)
+    ))
 
 
 def _parse_line(line: str, garages: tuple[str, ...]) -> tuple[str | None, str]:

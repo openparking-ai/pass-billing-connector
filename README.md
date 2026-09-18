@@ -41,8 +41,10 @@ connector never guesses a link from matching text.
 is registered through billing's door, as garage-pass recorded it, and the
 stored form per garage is taken from what the door prints back. Then every
 row billing holds that no live identity produced is released by passing that
-form back. The connector never reimplements billing's normalisation — the
-door's answer is the only source of a form it has. Two live identities that
+form back at the one garage that stores it (`release-vehicle --garage`), so
+no release ever reaches another garage's row. The connector never
+reimplements billing's normalisation — the door's answer is the only source
+of a form it has. Two live identities that
 fold to one form at a garage are a **collision**: nothing is released for
 that link, and the run says so.
 

@@ -122,7 +122,9 @@ def test_a_suspended_or_revoked_pass_keeps_no_car_in_billing(pair, monkeypatch, 
     code, report = pair.sync([pair.link()], AT, monkeypatch=monkeypatch)
     assert code == 0, report
     assert pair.mb_rows("ag-1") == set()
-    assert [a["action"] for a in report["links"][0]["actions"]] == ["release"]
+    # One release per row, each at its garage.
+    assert [(a["action"], a["garage"]) for a in report["links"][0]["actions"]] == [
+        ("release", "garage-a"), ("release", "garage-b")]
 
 
 @needs_databases

@@ -76,10 +76,13 @@ GUARANTEES: dict[str, str] = {
         "the package is refused by a scan of the source. Then every row billing holds "
         "whose (garage, form) no live identity produced is released by passing that "
         "form back, which is sound because the normalisation is idempotent at the "
-        "door. A release fans out by identity over every covered garage; a release "
-        "that takes a row the run had just registered is named and the identities "
-        "that produced it are registered again before the final read, so a car swap "
-        "whose two plates fold to one form converges in one run with the new car kept."
+        "door. EVERY RELEASE NAMES THE ONE COVERED GARAGE THAT STORES THE FORM "
+        "(`release-vehicle --garage`), so it takes that row and no other: a car swap "
+        "whose two plates fold to one form at the folded garage converges in one run "
+        "with the new car's row never touched -- billing answers COVERED for the new "
+        "car at every garage after every door call of the run. The door's unnamed "
+        "release, which fans out by identity over every covered garage, is never "
+        "called."
     ),
     "C8": (
         "A COLLISION RELEASES NOTHING. Two live identities with one stored form at one "
@@ -94,8 +97,10 @@ GUARANTEES: dict[str, str] = {
         "door refused to register has no known form and cannot converge; a pass whose "
         "live register changed under the run is named. A door refusal on the way -- a "
         "car held by another agreement -- is recorded on its action with the door's "
-        "own sentence, and the final read decides. Every register and release the "
-        "run made is in the report with its reason."
+        "own sentence, a door that exited 0 with an answer the connector cannot read "
+        "is recorded as `unparseable` carrying what it printed, and the final read "
+        "decides either way. Every register and release the run made is in the "
+        "report with its reason, and every release with the garage it named."
     ),
     "C10": (
         "CONVERGENCE, NOT A JOURNAL. Nothing the connector needs survives between runs "
@@ -108,10 +113,12 @@ GUARANTEES: dict[str, str] = {
     "C11": (
         "REFUSE THE LINK, WRITING NOTHING. An agreement whose registrar is not "
         "`outside`, garage sets that differ (exact text, as sets), a pass or a garage "
-        "stored unreadable, rows at garages outside either set, and a module that "
-        "would not answer the read -- including a WRONG TENANT on either side, which "
-        "is that module's own refusal by name and never an empty register -- each stop "
-        "the link before any write, by name, and the link's action list is empty."
+        "stored unreadable, rows at garages outside either set, a covered set whose "
+        "ids the door's printed line cannot tell apart (one id is another plus `: ` "
+        "plus anything), and a module that would not answer the read -- including a "
+        "WRONG TENANT on either side, which is that module's own refusal by name and "
+        "never an empty register -- each stop the link before any write, by name, and "
+        "the link's action list is empty."
     ),
     "C12": (
         "THE REPORT'S SHAPE IS PUBLISHED AND GENERATED. Its keys are derived from the "
@@ -122,13 +129,15 @@ GUARANTEES: dict[str, str] = {
     ),
     "C13": (
         "THE DOOR'S PRINTED LINE IS PINNED. The one piece of prose the connector reads "
-        "-- `  at garage {garage}: {form}`, one line per covered garage after the "
-        "first -- is matched against the garage ids the register read already named, "
-        "so a form may contain anything, a garage id that another id begins with -- "
-        "separator included -- claims no line, and a line naming no known garage is "
-        "reported unparseable "
-        "rather than guessed at. Measured against the pinned module, so a change "
-        "there reddens this repository."
+        "-- `  at garage {garage}: {form}`, one line per garage the call reached "
+        "after the first -- is matched against the garage ids the register read "
+        "already named, so a form may contain anything and a line naming no known "
+        "garage is reported unparseable rather than guessed at. A covered set in "
+        "which one id is another id plus the separator plus anything (`g` and "
+        "`g: 2`) is the one shape a line cannot be read from without guessing, and "
+        "such a link is REFUSED before any write, by name; the parser's "
+        "longest-first order is never asked to decide it. Measured against the "
+        "pinned module, so a change there reddens this repository."
     ),
     "C14": (
         "NOTHING PERSONAL TRAVELS. The report carries ids, garages, days, identities "

@@ -4,8 +4,11 @@ After the run's writes both sides are read again and the verdict is taken
 from THAT read, not from the calls. A door refusal on the way -- a car held
 by ANOTHER agreement at a garage (§5.6) -- is recorded on its action with
 the door's own sentence, the identity has no known form, and the link does
-not converge, exit 1, named. A divergence names the garage, the form and
-the side that holds it. A pass that changed under the run is named.
+not converge, exit 1, named. A door that exited 0 with lines the connector
+cannot read is recorded as `unparseable` on its action, carrying what it
+printed, and the final read decides what it did. A divergence names the
+garage, the form and the side that holds it. A pass that changed under the
+run is named.
 
 The pure half fakes the two doors (`sync.doors`) so the connector's own logic
 can be driven through states the real modules cannot be made to produce on
@@ -20,6 +23,7 @@ from datetime import date
 import pytest
 
 from harness import AT, needs_databases, standard_world
+from pass_billing_connector import doors as doors_module
 from pass_billing_connector import sync as sync_module
 from pass_billing_connector.doors import Answer, Read
 from pass_billing_connector.links import Link
@@ -47,7 +51,11 @@ def register(rows):
 
 class FakeDoors:
     """Two doors with a script: what each read returns, in order, and what
-    the door says to each write. Records every call."""
+    the door says to each write. Records every call. The parser's own pure
+    helper is the real one: the fake stands in for the doors, not for the
+    reading of their line."""
+
+    ambiguous_garage_ids = staticmethod(doors_module.ambiguous_garage_ids)
 
     def __init__(self, passes, registers, register_answers=None):
         self.passes, self.registers = list(passes), list(registers)
@@ -68,9 +76,9 @@ class FakeDoors:
         default = Answer("done", {"garage-a": folded, "garage-b": identity}, None)
         return self.register_answers.get(identity, default)
 
-    def release_vehicle(self, tenant, agreement, form, garages):
-        self.calls.append(("release-vehicle", form))
-        return Answer("done", {"garage-b": form}, None)
+    def release_vehicle(self, tenant, agreement, form, garage, garages):
+        self.calls.append(("release-vehicle", form, garage))
+        return Answer("done", {garage: form}, None)
 
 
 @pytest.mark.guarantee("C9")
@@ -124,6 +132,44 @@ def test_the_verdict_comes_from_the_final_read_not_from_the_calls(monkeypatch):
 
 
 @pytest.mark.guarantee("C9")
+def test_a_door_that_exited_0_unreadably_is_recorded_as_unparseable_and_the_final_read_decides(
+    monkeypatch,
+):
+    """`doors._run` is faked to exit 0 with a line of another shape for the
+    release; the register answers normally. The action says `unparseable`
+    with what the door printed, nothing is guessed about what was released,
+    and the final read -- the stale row still there -- decides: exit 1."""
+    import subprocess
+
+    stale = register([("garage-a", "ab123"), ("garage-b", "AB-123"), ("garage-b", "stale")])
+    reads = {"show-pass": [shown([("AB-123", "garage-a"), ("AB-123", "garage-b")])] * 2,
+             "show-register": [stale] * 3}
+
+    def run(argv):
+        verb = argv[1]
+        if verb in reads:
+            return subprocess.CompletedProcess(argv, 0, json.dumps(reads[verb].pop(0)), "")
+        if verb == "register-vehicle":
+            return subprocess.CompletedProcess(
+                argv, 0, "vehicle registered to agreement ag-1\n  at garage garage-a: ab123\n"
+                "  at garage garage-b: AB-123\n", "")
+        assert verb == "release-vehicle" and argv[-2:] == ["--garage", "garage-b"], argv
+        return subprocess.CompletedProcess(argv, 0, "vehicle released from agreement ag-1\n"
+                                           "  at garage garage-z: stale\n", "")
+
+    monkeypatch.setattr(doors_module, "_run", run)
+    result = sync_link(LINK, AT, D)
+    (release,) = [a for a in result.actions if a.action == "release"]
+    assert release.outcome == "unparseable" and release.stored == {}
+    assert release.garage == "garage-b" and release.form == "stale"
+    assert release.detail == ("exit 0: vehicle released from agreement ag-1\n"
+                              "  at garage garage-z: stale")
+    assert result.converged is False
+    assert [(f.code, f.garage, f.form, f.side) for f in result.findings] == [
+        ("DIVERGENCE", "garage-b", "stale", "billing_only")]
+
+
+@pytest.mark.guarantee("C9")
 def test_the_report_is_json_with_sorted_keys():
     from pass_billing_connector.report import Report
 
@@ -168,9 +214,10 @@ def test_every_register_and_release_is_in_the_report_with_its_reason(pair, monke
     code, report = pair.sync([pair.link()], AT, monkeypatch=monkeypatch)
     assert code == 0
     (one,) = report["links"]
-    assert [(a["action"], a["reason"], a["outcome"]) for a in one["actions"]] == [
-        ("register", "live on the day", "done"),
-        ("release", "billing holds this form; no live identity stores in it", "done"),
+    assert [(a["action"], a["reason"], a["outcome"], a["garage"]) for a in one["actions"]] == [
+        ("register", "live on the day", "done", None),
+        ("release", "billing holds this form; no live identity stores in it", "done", "garage-a"),
+        ("release", "billing holds this form; no live identity stores in it", "done", "garage-b"),
     ]
     assert one["actions"][0]["identity"] == "AB-123"
-    assert one["actions"][1]["form"] == "Foreign 9"
+    assert [a["form"] for a in one["actions"][1:]] == ["foreign9", "Foreign 9"]

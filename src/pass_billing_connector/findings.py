@@ -19,6 +19,7 @@ FINDING_PASS_UNREADABLE = "PASS_UNREADABLE"
 FINDING_PASS_GARAGE_UNREADABLE = "PASS_GARAGE_UNREADABLE"
 FINDING_PASS_ROWS_OUTSIDE_ITS_GARAGES = "PASS_ROWS_OUTSIDE_ITS_GARAGES"
 FINDING_REGISTER_ROWS_OUTSIDE_COVERED_SET = "REGISTER_ROWS_OUTSIDE_COVERED_SET"
+FINDING_GARAGE_IDS_AMBIGUOUS = "GARAGE_IDS_AMBIGUOUS"
 #: A module answered the READ with a refusal or a configuration sentence.
 FINDING_GARAGE_PASS_REFUSED = "GARAGE_PASS_REFUSED"
 FINDING_GARAGE_PASS_CONFIGURATION = "GARAGE_PASS_CONFIGURATION"
@@ -29,7 +30,6 @@ FINDING_MONTHLY_BILLING_UNPARSEABLE = "MONTHLY_BILLING_UNPARSEABLE"
 #: Recorded on the way; the final read decides.
 FINDING_COLLISION = "COLLISION"
 FINDING_STORED_FORM_UNKNOWN = "STORED_FORM_UNKNOWN"
-FINDING_RELEASE_TOOK_A_LIVE_FORM = "RELEASE_TOOK_A_LIVE_FORM"
 FINDING_PASS_CHANGED_DURING_RUN = "PASS_CHANGED_DURING_RUN"
 #: The verdict.
 FINDING_DIVERGENCE = "DIVERGENCE"
@@ -64,6 +64,13 @@ FINDINGS: dict[str, str] = {
         "monthly billing shows a registration row at a garage the agreement's latest "
         "version does not cover (`garages_not_covered`). Refused before any write, "
         "naming the garages."
+    ),
+    FINDING_GARAGE_IDS_AMBIGUOUS: (
+        "One covered garage's id is another covered garage's id plus the door's "
+        "separator (`: `) plus anything -- `g` and `g: 2` -- so the door's printed "
+        "line `  at garage {id}: {form}` has two readings and no parser can tell "
+        "them apart. Refused before any write, naming each such pair; the parser is "
+        "never asked the question."
     ),
     FINDING_GARAGE_PASS_REFUSED: (
         "garage-pass refused the read by name (its exit 3): a wrong tenant, a garage "
@@ -106,12 +113,6 @@ FINDINGS: dict[str, str] = {
         "at the covered garages is not known to this run. The finding names the "
         "identity; the door's refusal is on the action. The link does not converge."
     ),
-    FINDING_RELEASE_TOOK_A_LIVE_FORM: (
-        "A release fans out by identity over every covered garage, and this one "
-        "took out a row whose form the run had just registered. The identities that "
-        "produced that form were registered again before the final read; the finding "
-        "names the garage, the form and the identities re-asserted."
-    ),
     FINDING_PASS_CHANGED_DURING_RUN: (
         "The final read of the pass shows a live register different from the one the "
         "run started from. The run wrote for the register it read first; the verdict "
@@ -140,28 +141,32 @@ ACTION_RELEASE = "release"
 ACTIONS: dict[str, str] = {
     ACTION_REGISTER: "`monthly-billing register-vehicle` for one live identity of the pass, "
     "as garage-pass recorded it, at the instant given",
-    ACTION_RELEASE: "`monthly-billing release-vehicle` for one stored form billing holds "
-    "that no live identity stores in",
+    ACTION_RELEASE: "`monthly-billing release-vehicle --garage` for one stored form billing "
+    "holds at ONE covered garage that no live identity stores in there; the action names "
+    "the garage",
 }
 OUTCOME_DONE = "done"
 OUTCOME_REFUSED = "refused"
 OUTCOME_FAILED = "failed"
+OUTCOME_UNPARSEABLE = "unparseable"
 OUTCOMES: dict[str, str] = {
-    OUTCOME_DONE: "the door answered, exit 0; `stored` carries what it printed per garage",
-    OUTCOME_REFUSED: "the door refused by name, exit 2; `reason` carries its sentence",
-    OUTCOME_FAILED: "the door exited with any other status; `reason` carries what it printed",
+    OUTCOME_DONE: "the door answered, exit 0, in lines the connector reads; `stored` carries "
+    "what it printed per garage",
+    OUTCOME_REFUSED: "the door refused by name, exit 2; `detail` carries its sentence",
+    OUTCOME_FAILED: "the door exited with a status that is neither 0 nor 2 (no DSN, a database "
+    "that did not connect); `detail` carries what it printed",
+    OUTCOME_UNPARSEABLE: "the door exited 0 but what it printed is not the `  at garage {id}: "
+    "{form}` lines the connector reads, so nothing is known about what it did; `detail` "
+    "carries what it printed and the final read decides",
 }
 
 #: Why a register action was made.
 REASON_LIVE = "live on the day"
-REASON_REASSERTED = "re-asserted after a release fanned out to a live form"
 REASON_NOT_LIVE_FORM = "billing holds this form; no live identity stores in it"
 REASONS: dict[str, str] = {
     REASON_LIVE: "the identity is in the pass's live register on the day",
-    REASON_REASSERTED: "a release of another form took this identity's row at a garage "
-    "where both fold to one form, so it was registered again",
-    REASON_NOT_LIVE_FORM: "billing's register holds the form and no live identity of the "
-    "pass stores in it at that garage",
+    REASON_NOT_LIVE_FORM: "billing's register holds the form at this garage and no live "
+    "identity of the pass stores in it there",
 }
 
 #: The connector's exit codes.

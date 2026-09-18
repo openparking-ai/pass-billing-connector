@@ -229,20 +229,21 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "a copy of billing's folded rule sits in the package: the day billing "
         "changes its rule the connector releases by a form billing never stored",
     ),
-    "C7/reassert": (
+    "C7/fan-out": (
         "tests/test_c7_registers_first_releases_by_form.py",
-        "sync.py",
-        "                reassert |= taken",
-        "                pass  # PLANTED: the new car is not registered again",
-        "a release that fanned out to a live form is named but the identity is "
-        "not registered again, so a swap whose plates fold to one form ends with "
-        "the new car OUT of billing -- the fan-out measured at the pinned commit",
+        "doors.py",
+        '                 agreement, "--vehicle", form, "--garage", garage])',
+        '                 agreement, "--vehicle", form])  # PLANTED: the unnamed release',
+        "the release no longer names its garage: the door fans out by identity "
+        "over every covered garage, a stale exact-rule form takes the live "
+        "folded-rule row that spells the same, and billing answers NOT COVERED "
+        "for the new car at that garage -- the fan-out measured at the pinned commit",
     ),
     "C7/no-release": (
         "tests/test_c7_registers_first_releases_by_form.py",
         "sync.py",
-        "    for form in sorted({form for (_garage, form) in stale}):",
-        "    for form in ():  # PLANTED: nothing stale is ever released",
+        "    for garage, form in sorted(stale):",
+        "    for garage, form in ():  # PLANTED: nothing stale is ever released",
         "no stale row is ever released: a foreign row and an ended car stay in "
         "billing forever, and the register only ever grows",
     ),
@@ -268,6 +269,15 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "the verdict is taken from the door's answers rather than the final read: "
         "a run whose every call said done is reported converged whatever billing "
         "actually holds",
+    ),
+    "C9/unparseable": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "doors.py",
+        "            return Answer(OUTCOME_UNPARSEABLE, {}, _printed(done))",
+        "            return Answer(OUTCOME_FAILED, {}, _printed(done))  # PLANTED",
+        "a door that exited 0 with lines the connector cannot read is reported "
+        "under the outcome published for a non-zero exit: the report's word and "
+        "what happened disagree",
     ),
     "C9/final-read": (
         "tests/test_c9_the_verdict_is_the_final_read.py",
@@ -307,6 +317,15 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "a pass over two garages linked to an agreement covering one is written "
         "to as if the sets matched",
     ),
+    "C11/ambiguous": (
+        "tests/test_c11_refuse_the_link_writing_nothing.py",
+        "sync.py",
+        "    for shorter, longer in doors.ambiguous_garage_ids(tuple(sorted(covered))):",
+        "    for shorter, longer in ():  # PLANTED: an ambiguous covered set is written to",
+        "a covered set of `g` and `g: 2` is written to: the door's line for one "
+        "garage reads as the other's, and a release's answer is attributed by a "
+        "guess",
+    ),
     # -- C12: the report's shape is published --
     "C12/code": (
         "tests/test_c12_the_report_shape_is_published.py",
@@ -332,6 +351,14 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         'STORED_FORM_LINE = "  at garage {garage} = {form}"  # PLANTED',
         "the pinned line no longer matches what the door prints: every door "
         "answer is unparseable and no form is ever known",
+    ),
+    "C13/ambiguous": (
+        "tests/test_c13_the_doors_printed_line_is_pinned.py",
+        "doors.py",
+        "        if longer != shorter and longer.startswith(shorter + _LINE_SEPARATOR)",
+        "        if False and longer.startswith(shorter + _LINE_SEPARATOR)  # PLANTED",
+        "the parser names no covered set as ambiguous, so `g` and `g: 2` reach "
+        "the longest-first order and a one-line answer is a guess",
     ),
     "C13/prefix": (
         "tests/test_c13_the_doors_printed_line_is_pinned.py",
