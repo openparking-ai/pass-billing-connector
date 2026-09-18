@@ -33,6 +33,7 @@ FINDING_STORED_FORM_UNKNOWN = "STORED_FORM_UNKNOWN"
 FINDING_PASS_CHANGED_DURING_RUN = "PASS_CHANGED_DURING_RUN"
 #: The verdict.
 FINDING_DIVERGENCE = "DIVERGENCE"
+FINDING_PASS_REGISTER_ASYMMETRIC = "PASS_REGISTER_ASYMMETRIC"
 
 FINDINGS: dict[str, str] = {
     FINDING_REGISTRAR_NOT_OUTSIDE: (
@@ -136,6 +137,22 @@ FINDINGS: dict[str, str] = {
         "run (`STORED_FORM_UNKNOWN`) may be that identity's: the run cannot tell, so "
         "the finding's sentence says so, `identities` names whose forms are unknown, "
         "and the row is not called foreign."
+    ),
+    FINDING_PASS_REGISTER_ASYMMETRIC: (
+        "On the final read the pass holds an identity live at SOME of its garages "
+        "and not at others. Billing's door registers a car at every covered garage "
+        "or at none, so that is a picture billing cannot be made to hold, and the "
+        "connector's comparison is of the identity set: left unnamed it would "
+        "converge while billing covered the car at a garage the pass does not. So "
+        "it is named -- the identity, the garages that hold it, the garages that do "
+        "not -- the link does not converge, exit 1. The finding is raised on the "
+        "final read, after the run's own registers and releases, and causes no "
+        "write of its own: the identity the first read showed live was registered "
+        "at every covered garage in step 2, as every live identity is, and the "
+        "next run makes the same register and names it again. Not reachable "
+        "through garage-pass's own "
+        "verbs at the pinned commit (a registration is written at every garage of "
+        "the pass or none, and ended at every one); a row written past them is."
     ),
 }
 

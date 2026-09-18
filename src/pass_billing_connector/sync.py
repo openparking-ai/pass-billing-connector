@@ -62,8 +62,12 @@ THE ORDER, AND WHY.
    answers. A difference either way is a DIVERGENCE, per garage, per form,
    naming the side that holds it; a live identity whose registration the
    door refused has no known form and cannot converge; a pass that changed
-   under the run is named. A row billing holds that no KNOWN form accounts
-   for, while some live identity's form is unknown, may be that identity's:
+   under the run is named; an identity live at some of the pass's garages
+   and not at others is named (``PASS_REGISTER_ASYMMETRIC``) and does not
+   converge, because the door registers everywhere or nowhere and the
+   identity-set comparison alone would call it equal. A row billing holds
+   that no KNOWN form accounts for, while some live identity's form is
+   unknown, may be that identity's:
    its sentence names the identities whose forms the run does not know and
    does not call the row foreign -- the report claims nothing the run could
    not learn. **And step 1's refusals are checked again against
@@ -95,6 +99,7 @@ from pass_billing_connector.findings import (
     FINDING_GARAGE_SETS_DIFFER,
     FINDING_PASS_CHANGED_DURING_RUN,
     FINDING_PASS_GARAGE_UNREADABLE,
+    FINDING_PASS_REGISTER_ASYMMETRIC,
     FINDING_PASS_ROWS_OUTSIDE_ITS_GARAGES,
     FINDING_PASS_UNREADABLE,
     FINDING_REGISTER_ROWS_OUTSIDE_COVERED_SET,
@@ -265,6 +270,12 @@ def sync_link(link: Link, at: str, day: date) -> LinkReport:
             f"the run started from {_pairs(first_live)} and the final read shows "
             f"{_pairs(final_live)}.",
         ))
+    # The pass's register is compared per garage, or it is named: an identity
+    # live at some of the pass's garages and not at others is a picture the
+    # door cannot be made to hold (it registers everywhere or nowhere), and the
+    # identity-set comparison below would call it converged. Named from the
+    # final read; it licenses no register and no release.
+    asymmetric = _asymmetric(final_live, findings)
     expected: set[tuple[str, str]] = set()
     for identity in final_live.identities():
         stored = identity_forms.get(identity)
@@ -298,7 +309,7 @@ def sync_link(link: Link, at: str, day: date) -> LinkReport:
             "billing holds no such row.", garage=garage, form=form, side=SIDE_PASS_ONLY,
         ))
     converged = (billing == expected and not collisions and not unknown
-                 and not final_refusals)
+                 and not final_refusals and not asymmetric)
     return LinkReport(
         pass_tenant=link.pass_tenant, pass_id=link.pass_id, pass_garage=link.pass_garage,
         billing_tenant=link.billing_tenant, agreement_id=link.agreement_id,
@@ -307,6 +318,25 @@ def sync_link(link: Link, at: str, day: date) -> LinkReport:
         billing=tuple(Row(g, f) for g, f in sorted(billing)),
         actions=tuple(actions), findings=tuple(findings),
     )
+
+
+def _asymmetric(live: LiveRegister, findings: list[Finding]) -> list[Finding]:
+    """One finding per identity live at a strict subset of the pass's garages,
+    appended to ``findings`` and returned."""
+    named: list[Finding] = []
+    for identity in live.identities():
+        holds = sorted(g for g, ids in live.by_garage.items() if identity in ids)
+        lacks = sorted(g for g in live.by_garage if g not in holds)
+        if holds and lacks:
+            named.append(Finding(
+                FINDING_PASS_REGISTER_ASYMMETRIC,
+                f"identity {identity!r} is live at {holds} and not at {lacks}; billing's door "
+                "registers at every covered garage or none, so this register cannot be made "
+                "equal and the link does not converge.",
+                identity=identity,
+            ))
+    findings.extend(named)
+    return named
 
 
 def _pairs(live: LiveRegister) -> list[list[str]]:

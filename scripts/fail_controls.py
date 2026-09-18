@@ -262,12 +262,12 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "sync.py",
         source(
             "    converged = (billing == expected and not collisions and not unknown",
-            "                 and not final_refusals)",
+            "                 and not final_refusals and not asymmetric)",
         ),
         source(
             "    converged = (  # PLANTED: the verdict from the calls, not the read",
             "        all(a.outcome == OUTCOME_DONE for a in actions) and not collisions",
-            "        and not final_refusals",
+            "        and not final_refusals and not asymmetric",
             "    )",
         ),
         "the verdict is taken from the door's answers rather than the final read: "
@@ -432,6 +432,16 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         'GARAGE_B = ("garage-b", "Europe/Berlin", "folded_alphanumeric")  # PLANTED',
         "the two fixture garages agree on identity rule, so every test of "
         "releasing by stored form samples one point on the axis that decides",
+    ),
+    # -- C17: the per-garage register is compared, or it is named --
+    "C17": (
+        "tests/test_c17_the_per_garage_register_is_named.py",
+        "sync.py",
+        "                 and not final_refusals and not asymmetric)",
+        "                 and not final_refusals)  # PLANTED: an asymmetric pass converges",
+        "an identity live at some of the pass's garages and not at others is named "
+        "and still reported converged, exit 0: billing covers the car at a garage "
+        "the pass does not, and nothing says so -- the outside round's N1",
     ),
 }
 
