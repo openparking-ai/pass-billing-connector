@@ -18,11 +18,21 @@ THE ORDER, AND WHY.
    connector ever has. The connector never reimplements billing's
    normalisation; the door's answer is the whole of what it knows about forms.
 
-3. **A collision stops the releases.** Two live identities with one stored
-   form at one garage (the folded rule makes `AB-123` and `ab123` one billing
-   row): releasing either would take out the other, so nothing is released
-   for the link, it does not converge, and the report names the garage, the
-   form and both identities.
+3. **A collision stops the releases -- and so does a register the door did
+   not answer.** Two live identities with one stored form at one garage (the
+   folded rule makes `AB-123` and `ab123` one billing row): releasing either
+   would take out the other, so nothing is released for the link, it does not
+   converge, and the report names the garage, the form and both identities.
+   And a live identity whose ``register-vehicle`` did not come back ``done``
+   -- refused, failed, or an answer the connector cannot read -- has no known
+   forms, so every row billing may already hold for it would look stale.
+   The connector cannot tell "the car is not registered" from "the door did
+   not tell me", and an incomplete picture of the desired set is never a
+   licence to delete: nothing is released for the link that run, the
+   registers that did answer stand, ``STORED_FORM_UNKNOWN`` names the identity
+   and the door's words, the link does not converge, and the next run
+   re-reads. (Measured before this rule existed: one transient failure on a
+   held car's register released that car's rows at every garage.)
 
 4. **Release by stored form, never by raw identity, AT THE GARAGE THAT
    STORES IT.** Every row billing holds at a garage whose form is not among
@@ -46,7 +56,12 @@ THE ORDER, AND WHY.
    answers. A difference either way is a DIVERGENCE, per garage, per form,
    naming the side that holds it; a live identity whose registration the
    door refused has no known form and cannot converge; a pass that changed
-   under the run is named. Every register and release the run made is in the
+   under the run is named. **And step 1's refusals are checked again against
+   the final reads**: a registrar, a garage set, an unreadable record, a row
+   outside a set or an ambiguous id that changed under the run is named
+   exactly as it would be at the start of a run, and the link does not
+   converge -- "equal" that became undefined during the run is not called
+   equal at its end. Every register and release the run made is in the
    report with its reason and the door's own words.
 
 THE CROSS-DATABASE FAILURE STATE IS CONVERGENCE. The two writes are never one
@@ -202,8 +217,11 @@ def sync_link(link: Link, at: str, day: date) -> LinkReport:
         _register(link, identity, at, garages, REASON_LIVE, actions, identity_forms, forms,
                   findings)
 
-    # 3. A collision stops the releases.
+    # 3. A collision stops the releases; so does a register the door did not
+    #    answer `done` -- its rows are unknown, not stale.
     collisions = {key: ids for key, ids in forms.items() if len(ids) > 1}
+    unanswered = [a.identity for a in actions if a.action == "register"
+                  and a.outcome != OUTCOME_DONE]
     for (garage, form), identities in sorted(collisions.items()):
         findings.append(Finding(
             FINDING_COLLISION,
@@ -213,7 +231,7 @@ def sync_link(link: Link, at: str, day: date) -> LinkReport:
         ))
 
     # 4. Releases by stored form, each at the one garage that stores it.
-    if not collisions:
+    if not collisions and not unanswered:
         _release_stale(link, garages, actions, forms, findings)
 
     # 5. The final read decides.
@@ -226,6 +244,10 @@ def sync_link(link: Link, at: str, day: date) -> LinkReport:
             converged=False, refused=False, live=dict(first_live.by_garage), expected=(),
             billing=(), actions=tuple(actions), findings=tuple(findings),
         )
+    # Step 1's refusals, against the final reads: what made "equal" defined
+    # at the start must still hold at the end.
+    final_refusals = _link_refusals(final_shown, final_register)
+    findings.extend(final_refusals)
     final_live = live_register(final_shown, day)
     if final_live.pairs() != first_live.pairs():
         findings.append(Finding(
@@ -261,7 +283,8 @@ def sync_link(link: Link, at: str, day: date) -> LinkReport:
             "billing holds no such row.", garage=garage, form=form, side=SIDE_PASS_ONLY,
         ))
     unknown = any(f.code == FINDING_STORED_FORM_UNKNOWN for f in findings)
-    converged = billing == expected and not collisions and not unknown
+    converged = (billing == expected and not collisions and not unknown
+                 and not final_refusals)
     return LinkReport(
         pass_tenant=link.pass_tenant, pass_id=link.pass_id, pass_garage=link.pass_garage,
         billing_tenant=link.billing_tenant, agreement_id=link.agreement_id,
@@ -288,7 +311,9 @@ def _register(link: Link, identity: str, at: str, garages: tuple[str, ...], reas
         if reason == REASON_LIVE:
             findings.append(Finding(
                 FINDING_STORED_FORM_UNKNOWN,
-                f"the door did not register {identity!r}: {answer.reason}", identity=identity,
+                f"the door did not register {identity!r} ({answer.outcome}): {answer.reason}; "
+                "its stored forms are not known, so nothing is released for this link.",
+                identity=identity,
             ))
         return
     identity_forms[identity] = dict(answer.stored)

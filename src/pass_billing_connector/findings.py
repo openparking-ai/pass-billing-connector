@@ -109,9 +109,15 @@ FINDINGS: dict[str, str] = {
         "garage, the form and both identities."
     ),
     FINDING_STORED_FORM_UNKNOWN: (
-        "A live identity's registration was refused by the door, so its stored form "
-        "at the covered garages is not known to this run. The finding names the "
-        "identity; the door's refusal is on the action. The link does not converge."
+        "A live identity's registration did not come back `done` from the door "
+        "(refused, failed, or an answer the connector cannot read), so its stored "
+        "form at the covered garages is not known to this run. The finding names the "
+        "identity and what the door said; the door's own words are on the action. "
+        "NOTHING IS RELEASED for the link that run -- every row billing may already "
+        "hold for that identity would look stale, and an incomplete picture of the "
+        "desired set is never a licence to delete; the registers that did answer "
+        "stand, and the next run re-reads. The link does not converge. Also raised "
+        "on the final read for an identity live there that this run did not register."
     ),
     FINDING_PASS_CHANGED_DURING_RUN: (
         "The final read of the pass shows a live register different from the one the "

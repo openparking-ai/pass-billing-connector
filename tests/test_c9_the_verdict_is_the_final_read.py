@@ -10,6 +10,15 @@ printed, and the final read decides what it did. A divergence names the
 garage, the form and the side that holds it. A pass that changed under the
 run is named.
 
+A REGISTER THE DOOR DID NOT ANSWER STOPS THE LINK'S RELEASES. Measured before
+the rule existed (the C1 gate): a car billing already held, whose register
+answered one transient failure, had every one of its rows released by the
+same run -- its forms were unknown, so they looked stale. The connector
+cannot tell "not registered" from "the door did not tell me"; an incomplete
+picture of the desired set is never a licence to delete. THE REFUSALS ARE
+CHECKED AGAIN ON THE FINAL READ: a covered set or a registrar that moved
+under the run is named and the link does not converge.
+
 The pure half fakes the two doors (`sync.doors`) so the connector's own logic
 can be driven through states the real modules cannot be made to produce on
 cue -- a pass changing between the first and the final read.
@@ -18,6 +27,7 @@ cue -- a pass changing between the first and the final read.
 from __future__ import annotations
 
 import json
+import os
 from datetime import date
 
 import pytest
@@ -177,6 +187,70 @@ def test_the_report_is_json_with_sorted_keys():
     assert rendered == json.dumps(json.loads(rendered), sort_keys=True, indent=2)
 
 
+@pytest.mark.guarantee("C9")
+@pytest.mark.parametrize("outcome, words", [
+    ("refused", "exit 2: REFUSED — REFUSAL_VEHICLE_ALREADY_REGISTERED: held by ag-2"),
+    ("failed", "exit 1: a store command needs --dsn or MONTHLY_BILLING_DSN."),
+    ("unparseable", "exit 0: vehicle registered to agreement ag-1\n  something else"),
+])
+def test_a_register_the_door_did_not_answer_stops_the_links_releases(monkeypatch, outcome,
+                                                                      words):
+    """Billing already holds HELD-1's rows and one stale row. HELD-1's
+    register does not come back `done`; FREE-2's does. NOTHING is released --
+    not the stale row, and not HELD-1's rows, which would have looked stale
+    with its forms unknown. The finding names the identity and the door's
+    words; FREE-2's register stands; the link does not converge."""
+    pass_ = shown([("HELD-1", "garage-a"), ("HELD-1", "garage-b"),
+                   ("FREE-2", "garage-a"), ("FREE-2", "garage-b")])
+    held = [("garage-a", "held1"), ("garage-b", "HELD-1"), ("garage-a", "stale")]
+    after = register(held + [("garage-a", "free2"), ("garage-b", "FREE-2")])
+    fake = FakeDoors([pass_, pass_], [register(held), after, after],
+                     register_answers={"HELD-1": Answer(outcome, {}, words)})
+    monkeypatch.setattr(sync_module, "doors", fake)
+    result = sync_link(LINK, AT, D)
+    assert [c for c in fake.calls if c[0] == "release-vehicle"] == []
+    assert [(a.action, a.identity, a.outcome) for a in result.actions] == [
+        ("register", "FREE-2", "done"), ("register", "HELD-1", outcome)]
+    (unknown,) = [f for f in result.findings if f.code == "STORED_FORM_UNKNOWN"]
+    assert unknown.identity == "HELD-1"
+    assert words in unknown.detail and outcome in unknown.detail
+    assert "nothing is released" in unknown.detail
+    assert result.converged is False
+    # The verdict still comes from the final read: the stale row is a
+    # divergence there, HELD-1's rows are not (its forms are unknown, not wrong).
+    assert [(f.garage, f.form, f.side) for f in result.findings if f.code == "DIVERGENCE"] == [
+        ("garage-a", "held1", "billing_only"), ("garage-a", "stale", "billing_only"),
+        ("garage-b", "HELD-1", "billing_only")]
+
+
+@pytest.mark.guarantee("C9")
+@pytest.mark.parametrize("moved, codes", [
+    ({"covered_garages": ["garage-a"]}, ["GARAGE_SETS_DIFFER"]),
+    ({"registrar": "self"}, ["REGISTRAR_NOT_OUTSIDE"]),
+    ({"covered_garages": ["garage-a", "garage-b", "garage-a: 2"]},
+     ["GARAGE_SETS_DIFFER", "GARAGE_IDS_AMBIGUOUS"]),
+    ({"garages_not_covered": ["garage-c"]}, ["REGISTER_ROWS_OUTSIDE_COVERED_SET"]),
+])
+def test_a_refusal_that_appears_on_the_final_read_is_named_and_the_link_does_not_converge(
+    monkeypatch, moved, codes,
+):
+    """The first reads pass every check and the run writes; the FINAL read of
+    billing shows something step 1 would have refused. Named exactly as at
+    the start, and not converged -- even though the rows themselves are
+    equal."""
+    pass_ = shown([("AB-123", "garage-a"), ("AB-123", "garage-b")])
+    rows = [("garage-a", "ab123"), ("garage-b", "AB-123")]
+    final = register(rows)
+    final.update(moved)
+    fake = FakeDoors([pass_, pass_], [register([]), register(rows), final])
+    monkeypatch.setattr(sync_module, "doors", fake)
+    result = sync_link(LINK, AT, D)
+    assert result.refused is False
+    assert [f.code for f in result.findings] == codes
+    assert result.converged is False
+    assert [(r.garage, r.form) for r in result.billing] == rows
+
+
 # ------------------------------------------------------------ the database
 
 
@@ -203,6 +277,8 @@ def test_a_car_held_by_another_agreement_is_recorded_and_named_exit_1(pair, monk
     # The other car converged on its own: the final read holds it.
     assert pair.mb_rows("ag-1") == {("garage-a", "free2"), ("garage-b", "FREE-2")}
     assert [f["code"] for f in one["findings"] if f["code"] == "DIVERGENCE"] == []
+    # And the unanswered register stopped the releases: none was made.
+    assert [a for a in one["actions"] if a["action"] == "release"] == []
 
 
 @needs_databases
@@ -221,3 +297,125 @@ def test_every_register_and_release_is_in_the_report_with_its_reason(pair, monke
     ]
     assert one["actions"][0]["identity"] == "AB-123"
     assert [a["form"] for a in one["actions"][1:]] == ["foreign9", "Foreign 9"]
+
+
+@needs_databases
+@pytest.mark.guarantee("C9")
+@pytest.mark.parametrize("answer", ["failed", "unparseable"])
+def test_a_held_car_whose_register_did_not_answer_keeps_its_rows_and_nothing_is_released(
+    pair, monkeypatch, tmp_path, answer,
+):
+    """THE GATE'S CASE, BY ITS METHOD. The console script as a subprocess; a
+    shim `monthly-billing` ahead of the real one on PATH intercepts exactly
+    ONE call -- the first `register-vehicle` -- and forwards every other call
+    to the real door. `failed` is the real door with its DSN dropped for that
+    call (its own exit 1); `unparseable` is exit 0 with lines the connector
+    cannot read. LIVE-1 is live on the pass and ALREADY in billing from a
+    previous run, beside one stale row. After the run: billing still holds
+    LIVE-1 at both garages, billing's own barrier answers COVERED at both,
+    the stale row is still there (nothing was released), exit 1 with the
+    finding; the next run, real door throughout, converges."""
+    import shutil
+    import subprocess
+
+    standard_world(pair)
+    pair.gp_register("pass-1", "garage-a", "LIVE-1", "2026-09-01")
+    pair.mb_register("ag-1", "LIVE-1", AT)
+    pair.mb_register("ag-1", "old1", AT)
+    held = {("garage-a", "live1"), ("garage-b", "LIVE-1"), ("garage-a", "old1"),
+            ("garage-b", "old1")}
+    assert pair.mb_rows("ag-1") == held
+
+    real = shutil.which("monthly-billing")
+    assert real
+    marker = tmp_path / "intercepted"
+    shim = tmp_path / "monthly-billing"
+    body = {
+        "failed": f'unset MONTHLY_BILLING_DSN; exec "{real}" "$@"',
+        "unparseable": 'echo "vehicle registered"; echo "  a line the connector cannot read"; '
+                       'exit 0',
+    }[answer]
+    shim.write_text(
+        "#!/bin/sh\n"
+        f'if [ "$1" = "register-vehicle" ] && [ ! -e "{marker}" ]; then\n'
+        f'  : > "{marker}"\n'
+        f"  {body}\n"
+        "fi\n"
+        f'exec "{real}" "$@"\n'
+    )
+    shim.chmod(0o700)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+
+    def covered(garage: str) -> str:
+        done = pair.mb_run("covered-in-store", "--garage", garage, "--vehicle", "LIVE-1",
+                           "--at", AT, check=False)
+        return done.stdout.split()[0]
+
+    code, report, err = pair.sync_script([pair.link()], AT)
+    assert marker.exists(), "the shim did not intercept the register"
+    assert code == 1, err
+    (one,) = report["links"]
+    (reg,) = [a for a in one["actions"] if a["action"] == "register"]
+    assert reg["identity"] == "LIVE-1" and reg["outcome"] == answer
+    assert [a for a in one["actions"] if a["action"] == "release"] == []
+    (unknown,) = [f for f in one["findings"] if f["code"] == "STORED_FORM_UNKNOWN"]
+    assert unknown["identity"] == "LIVE-1" and reg["detail"] in unknown["detail"]
+    assert one["converged"] is False
+    assert pair.mb_rows("ag-1") == held
+    assert (covered("garage-a"), covered("garage-b")) == ("COVERED", "COVERED")
+
+    # The next run, the real door throughout: the stale row goes, LIVE-1 stays.
+    monkeypatch.setenv("PATH", os.environ["PATH"].split(":", 1)[1])
+    code, report, err = pair.sync_script([pair.link()], AT)
+    assert code == 0, err
+    assert [(a["action"], a["form"], a["garage"]) for a in report["links"][0]["actions"]] == [
+        ("register", None, None), ("release", "old1", "garage-a"), ("release", "old1", "garage-b")]
+    assert pair.mb_rows("ag-1") == {("garage-a", "live1"), ("garage-b", "LIVE-1")}
+    assert (covered("garage-a"), covered("garage-b")) == ("COVERED", "COVERED")
+    assert subprocess.run(["which", "monthly-billing"], capture_output=True,
+                          text=True).stdout.strip() == real
+
+
+@needs_databases
+@pytest.mark.guarantee("C9")
+@pytest.mark.parametrize("covered_after", [("garage-a",), ("garage-a", "garage-b", "garage-c")])
+def test_a_covered_set_that_moved_under_the_run_is_named_on_the_final_read(
+    pair, monkeypatch, covered_after,
+):
+    """Billing's operator stores version 2 of the agreement -- fewer garages,
+    or more -- between the connector's first read and its first write. The
+    first read passed; the final read shows sets that differ, and the link
+    is named `GARAGE_SETS_DIFFER` and does not converge, exit 1. The next
+    run refuses it by name before any write."""
+    from harness import mb_agreement, mb_garage
+
+    standard_world(pair)
+    if "garage-c" in covered_after:
+        pair.mb_seed((mb_garage("garage-c", "Pacific/Auckland", "exact"),), ())
+    pair.gp_register("pass-1", "garage-a", "LIVE-1", "2026-09-01")
+    pair.mb_register("ag-1", "old1", AT)
+    original = doors_module._run
+    reads = {"n": 0}
+
+    def run_and_revise(argv):
+        done = original(argv)
+        if argv[1] == "show-register":
+            reads["n"] += 1
+            if reads["n"] == 1:
+                version_2 = mb_agreement("ag-1", "garage-a", covered_after)
+                version_2["version"] = 2
+                pair.mb_revise(version_2)
+        return done
+
+    monkeypatch.setattr(doors_module, "_run", run_and_revise)
+    code, report = pair.sync([pair.link()], AT, monkeypatch=monkeypatch)
+    assert code == 1
+    (one,) = report["links"]
+    assert one["refused"] is False and one["converged"] is False
+    assert "GARAGE_SETS_DIFFER" in [f["code"] for f in one["findings"]]
+    monkeypatch.setattr(doors_module, "_run", original)
+    code, report = pair.sync([pair.link()], AT, monkeypatch=monkeypatch)
+    assert code == 1
+    (one,) = report["links"]
+    assert one["refused"] is True and one["actions"] == []
+    assert [f["code"] for f in one["findings"]] == ["GARAGE_SETS_DIFFER"]

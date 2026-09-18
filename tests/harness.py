@@ -354,6 +354,29 @@ class Pair:
         finally:
             app.close()
 
+    def mb_revise(self, agreement: dict) -> None:
+        """A NEW VERSION of an agreement this pair seeded -- the store API, as
+        `mb_seed`, since versioning an agreement has no verb. What a test uses
+        to move the covered set UNDER a run (C9): billing's own operator
+        storing version 2 between the connector's reads."""
+        from monthly_billing.agreement import load_agreement
+        from monthly_billing.store.postgres import tenant
+        from monthly_billing.store.records import store_agreement
+
+        known = _SEEDED[self.mb_tenant]
+        loaded = load_agreement(agreement)
+        app = _connect(self.mb.app_dsn)
+        app.autocommit = False
+        try:
+            with tenant(app, self.mb_tenant) as cursor:
+                home, home_uuid = known["garages"][loaded.garage_id]
+                store_agreement(cursor, self.mb_tenant, home, home_uuid,
+                                known["payers"][loaded.payer_id], loaded,
+                                now=datetime(2026, 9, 1, tzinfo=UTC))
+            app.commit()
+        finally:
+            app.close()
+
     def mb_register(self, agreement: str, identity: str, at: str | None = None, *,
                     check: bool = True):
         argv = ["register-vehicle", "--agreement", agreement, "--vehicle", identity]

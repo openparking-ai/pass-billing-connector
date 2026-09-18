@@ -260,10 +260,14 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
     "C9/verdict": (
         "tests/test_c9_the_verdict_is_the_final_read.py",
         "sync.py",
-        "    converged = billing == expected and not collisions and not unknown",
+        source(
+            "    converged = (billing == expected and not collisions and not unknown",
+            "                 and not final_refusals)",
+        ),
         source(
             "    converged = (  # PLANTED: the verdict from the calls, not the read",
             "        all(a.outcome == OUTCOME_DONE for a in actions) and not collisions",
+            "        and not final_refusals",
             "    )",
         ),
         "the verdict is taken from the door's answers rather than the final read: "
@@ -278,6 +282,24 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "a door that exited 0 with lines the connector cannot read is reported "
         "under the outcome published for a non-zero exit: the report's word and "
         "what happened disagree",
+    ),
+    "C9/unanswered": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "sync.py",
+        "    if not collisions and not unanswered:",
+        "    if not collisions:  # PLANTED: an unanswered register does not stop the releases",
+        "a live identity whose register the door did not answer has no known forms, "
+        "so every row billing already holds for it looks stale and is released: one "
+        "transient door failure uncovers a held car at every garage -- the C1 gate's "
+        "blocker, measured before the rule existed",
+    ),
+    "C9/final-refusals": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "sync.py",
+        "    final_refusals = _link_refusals(final_shown, final_register)",
+        "    final_refusals = []  # PLANTED: the refusals are not checked on the final read",
+        "a covered set or a registrar that moved under the run is not re-checked on "
+        "the final read: the link is reported converged, exit 0, with 'equal' undefined",
     ),
     "C9/final-read": (
         "tests/test_c9_the_verdict_is_the_final_read.py",
