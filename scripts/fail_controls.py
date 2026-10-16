@@ -356,6 +356,33 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "released for it, and its ended cars stay in billing until the next run "
         "(OP-NODE-083)",
     ),
+    "C9/rerun-refused": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "sync.py",
+        "    if again.refused:",
+        "    if False:  # PLANTED: a refused second attempt replaces the first",
+        "a second attempt refused at its read replaces the first attempt's report: "
+        "the link reads `refused`, which publishes that nothing was written, beside "
+        "the first attempt's registers that were done and stand in billing",
+    ),
+    "C9/second-attempt-words": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "findings.py",
+        "        \"second attempt, where this finding stands if that attempt's register did not \"",
+        "        \"second attempt, where this finding stands only if it was refused too, not \"",
+        "the published STORED_FORM_UNKNOWN sentence says the finding stands on a second "
+        "attempt only when its register was refused again, while the run names it for a "
+        "`failed` or `unparseable` register too: the contract and the report disagree",
+    ),
+    "C9/final-replaced": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "sync.py",
+        "    final_live = live_register(final_shown, day, final_replaced)",
+        "    final_live = live_register(final_shown, day, replaced)  # PLANTED",
+        "the final read takes its replaced cars from the first read: a car garage-pass "
+        "replaced under the run is still live on the final read, the pass is not named "
+        "as changed, and the link converges with the replaced car in billing",
+    ),
     # -- C10: convergence, not a journal --
     "C10": (
         "tests/test_c10_convergence_not_a_journal.py",
@@ -394,6 +421,21 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "a covered set of `g` and `g: 2` is written to: the door's line for one "
         "garage reads as the other's, and a release's answer is attributed by a "
         "guess",
+    ),
+    "C11/garage-register": (
+        "tests/test_c11_refuse_the_link_writing_nothing.py",
+        "sync.py",
+        source(
+            "        findings.append(Finding(codes_read.finding, codes_read.detail))",
+            "        return None, frozenset()",
+        ),
+        source(
+            "        findings.append(Finding(codes_read.finding, codes_read.detail))",
+            "        return pass_read.document, frozenset()  # PLANTED: no car replaced",
+        ),
+        "a garage register that did not answer is read as a pass on which no car was "
+        "replaced: the link is written to, and a replaced car is registered again "
+        "(OP-NODE-081 back, on any read error)",
     ),
     # -- C12: the report's shape is published --
     "C12/code": (

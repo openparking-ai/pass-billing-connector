@@ -62,7 +62,9 @@ class LinkReport:
     agreement_id: str
     converged: bool
     #: True when the link was refused before any write (K5.1 or a read that
-    #: did not answer): the actions list is then empty by construction.
+    #: did not answer): the actions list is then empty by construction. A link
+    #: run a second time whose second attempt is refused is reported as its
+    #: first attempt, not refused (``sync``).
     refused: bool
     #: The pass's live register on the day, per garage, from the FINAL read.
     live: dict[str, tuple[str, ...]]

@@ -28,7 +28,9 @@ are unknown and does not call the row foreign.
 
 A CAR MOVING BETWEEN TWO LINKED PASSES does not hold up the receiving link
 until the next run: the link whose register was refused is run once more
-when the other link released the car later in the same run.
+when the other link released the car later in the same run. A second attempt
+refused at its read wrote nothing, so the report is the first attempt's --
+not refused, its actions kept -- with the second attempt's findings added.
 
 The pure half fakes the two doors (`sync.doors`) so the connector's own logic
 can be driven through states the real modules cannot be made to produce on
@@ -48,7 +50,7 @@ from pass_billing_connector import doors as doors_module
 from pass_billing_connector import sync as sync_module
 from pass_billing_connector.doors import Answer, Read
 from pass_billing_connector.links import Link
-from pass_billing_connector.sync import sync_link
+from pass_billing_connector.sync import sync, sync_link
 
 LINK = Link("11111111-1111-1111-1111-111111111111", "pass-1", "garage-a",
             "22222222-2222-2222-2222-222222222222", "ag-1")
@@ -354,6 +356,181 @@ def test_a_refusal_that_appears_on_the_final_read_is_named_and_the_link_does_not
     assert result.converged is False
     assert [(r.garage, r.form) for r in result.billing] == rows
 
+
+@pytest.mark.guarantee("C9")
+def test_a_car_replaced_under_the_run_is_named_on_the_final_read(monkeypatch):
+    """The FINAL read takes its replaced cars from the final garage register,
+    not from the first: AB-123 is live on the first read and registered, and
+    its QR is exit only by the final read (garage-pass's `replace-car` ran
+    under the run). The final live register no longer holds it, the pass is
+    named as changed under the run, and billing's AB-123 rows are named --
+    the link does not converge until the next run releases them."""
+
+    class ReplacedUnderTheRun(FakeDoors):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.garage_registers = [
+                {"garage": "garage-a", "codes": [
+                    {"pass": "pass-1", "state": "redeemed", "bound_identity": "AB-123",
+                     "exit_only": exit_only}]}
+                for exit_only in (False, True)]
+
+        def show_garage_register(self, tenant, garage):
+            self.calls.append(("show-garage-register",))
+            return Read(self.garage_registers.pop(0), None, None)
+
+    pass_ = shown([("AB-123", "garage-a"), ("AB-123", "garage-b")])
+    rows = [("garage-a", "ab123"), ("garage-b", "AB-123")]
+    fake = ReplacedUnderTheRun([pass_, pass_], [register([]), register(rows), register(rows)])
+    monkeypatch.setattr(sync_module, "doors", fake)
+    result = sync_link(LINK, AT, D)
+    assert [(a.action, a.identity, a.outcome) for a in result.actions] == [
+        ("register", "AB-123", "done")]
+    assert result.live == {"garage-a": (), "garage-b": ()}
+    assert [f.code for f in result.findings] == [
+        "PASS_CHANGED_DURING_RUN", "DIVERGENCE", "DIVERGENCE"]
+    assert sorted((f.garage, f.form, f.side) for f in result.findings
+                  if f.code == "DIVERGENCE") == [
+        ("garage-a", "ab123", "billing_only"), ("garage-b", "AB-123", "billing_only")]
+    assert result.converged is False
+
+
+class MovingCar(FakeDoors):
+    """Two links of one run, with billing's state kept: CAR-X moves from
+    pass-a to pass-b, and pass-b also holds CAR-Y. ag-a holds CAR-X's rows, so
+    the door refuses CAR-X to ag-b by name until ag-a lets it go; a release
+    takes the one row it names. `second` breaks pass-b's SECOND attempt: at
+    its read -- `read`, garage-pass does not answer its show-pass; `registrar`,
+    ag-b's registrar has moved by then, a refusal of step 1 that began between
+    the attempts -- or at CAR-X's register, which comes back `failed` or
+    `unparseable` (the door's words are `SECOND_WORDS`)."""
+
+    PASSES = {"pass-a": shown([]),
+              "pass-b": shown([("CAR-X", "garage-a"), ("CAR-X", "garage-b"),
+                               ("CAR-Y", "garage-a"), ("CAR-Y", "garage-b")])}
+
+    SECOND_WORDS = {"failed": "exit 1: a store command needs --dsn or MONTHLY_BILLING_DSN.",
+                    "unparseable": "exit 0: vehicle registered to agreement ag-b\n  else"}
+
+    def __init__(self, second):
+        super().__init__([], [])
+        self.second = second
+        self.billing = {"ag-a": {("garage-a", "carx"), ("garage-b", "CAR-X")}, "ag-b": set()}
+        self.reads = {"pass-b": 0, "ag-b": 0}
+        self.registers_of_car_x = 0
+
+    def show_pass(self, tenant, garage, pass_id):
+        self.calls.append(("show-pass", pass_id))
+        self.reads[pass_id] = self.reads.get(pass_id, 0) + 1
+        if pass_id == "pass-b" and self.reads[pass_id] == 3 and self.second == "read":
+            return Read(None, "GARAGE_PASS_CONFIGURATION", "exit 2: the database did not connect")
+        return Read(self.PASSES[pass_id], None, None)
+
+    def show_register(self, tenant, agreement):
+        self.calls.append(("show-register", agreement))
+        self.reads[agreement] = self.reads.get(agreement, 0) + 1
+        document = register(sorted(self.billing[agreement]))
+        document["agreement"] = agreement
+        if agreement == "ag-b" and self.reads[agreement] == 3 and self.second == "registrar":
+            document["registrar"] = "self"
+        return Read(document, None, None)
+
+    def register_vehicle(self, tenant, agreement, identity, at, garages):
+        self.calls.append(("register-vehicle", agreement, identity))
+        if (agreement, identity) == ("ag-b", "CAR-X"):
+            self.registers_of_car_x += 1
+            if self.registers_of_car_x == 2 and self.second in self.SECOND_WORDS:
+                return Answer(self.second, {}, self.SECOND_WORDS[self.second])
+        folded = "".join(c for c in identity.lower() if c.isalnum())
+        stored = {("garage-a", folded), ("garage-b", identity)}
+        for other, rows in self.billing.items():
+            if other != agreement and stored & rows:
+                return Answer("refused", {}, f"exit 2: REFUSED — "
+                              f"REFUSAL_VEHICLE_ALREADY_REGISTERED: held by {other}")
+        self.billing[agreement] |= stored
+        return Answer("done", dict(stored), None)
+
+    def release_vehicle(self, tenant, agreement, form, garage, garages):
+        self.calls.append(("release-vehicle", agreement, form, garage))
+        self.billing[agreement].discard((garage, form))
+        return Answer("done", {garage: form}, None)
+
+
+@pytest.mark.guarantee("C9")
+@pytest.mark.parametrize("second, code, words", [
+    ("read", "GARAGE_PASS_CONFIGURATION", "exit 2: the database did not connect"),
+    ("registrar", "REGISTRAR_NOT_OUTSIDE", "'self'"),
+])
+def test_a_second_attempt_refused_at_its_read_keeps_the_first_attempts_report(
+    monkeypatch, second, code, words,
+):
+    """pass-b's link runs first: CAR-X is refused (ag-a holds it), CAR-Y is
+    registered, nothing is released. pass-a's link lets CAR-X go, so pass-b's
+    link is run once more -- and that attempt is refused at its read. It wrote
+    nothing, and what the first attempt wrote stands: CAR-Y is in billing. So
+    the report is the first attempt's, NOT refused, its actions and rows kept,
+    with the second attempt's finding after its own, and it does not
+    converge. A report that said `refused` beside a register that was done
+    would say the link wrote nothing when it did."""
+    fake = MovingCar(second)
+    monkeypatch.setattr(sync_module, "doors", fake)
+    link_a = Link(LINK.pass_tenant, "pass-a", "garage-a", LINK.billing_tenant, "ag-a")
+    link_b = Link(LINK.pass_tenant, "pass-b", "garage-a", LINK.billing_tenant, "ag-b")
+    report = sync((link_b, link_a), AT)
+    one_b, one_a = report.links
+    assert one_a.converged is True and fake.billing["ag-a"] == set()
+    assert fake.reads["pass-b"] == 3, "pass-b's link was not run a second time"
+    # The second attempt wrote nothing; the first attempt's register of CAR-Y stands.
+    assert [c for c in fake.calls if c[0] == "register-vehicle" and c[1] == "ag-b"] == [
+        ("register-vehicle", "ag-b", "CAR-X"), ("register-vehicle", "ag-b", "CAR-Y")]
+    assert fake.billing["ag-b"] == {("garage-a", "cary"), ("garage-b", "CAR-Y")}
+    assert one_b.refused is False
+    assert one_b.converged is False and report.converged is False
+    assert [(a.action, a.identity, a.outcome) for a in one_b.actions] == [
+        ("register", "CAR-X", "refused"), ("register", "CAR-Y", "done")]
+    assert [f.code for f in one_b.findings] == ["STORED_FORM_UNKNOWN", code]
+    assert one_b.findings[0].identity == "CAR-X"
+    assert words in one_b.findings[1].detail
+    # The first attempt's reads and verdict: what it wrote, as its final read saw it.
+    assert one_b.live == {"garage-a": ("CAR-X", "CAR-Y"), "garage-b": ("CAR-X", "CAR-Y")}
+    assert [(r.garage, r.form) for r in one_b.billing] == [("garage-a", "cary"),
+                                                            ("garage-b", "CAR-Y")]
+    assert [(r.garage, r.form) for r in one_b.expected] == [("garage-a", "cary"),
+                                                             ("garage-b", "CAR-Y")]
+
+
+@pytest.mark.guarantee("C9")
+@pytest.mark.parametrize("second", ["failed", "unparseable"])
+def test_a_second_attempt_whose_register_did_not_come_back_done_still_names_it(
+    monkeypatch, second,
+):
+    """The second attempt reads and judges, so the report takes its findings
+    from it -- and `STORED_FORM_UNKNOWN` stands there whenever CAR-X's register
+    did not come back `done`, not only when it was refused again: here the
+    door answers `failed` or `unparseable`. Nothing is released on either
+    attempt, both attempts' actions are kept, and the published sentence says
+    the same as the run does."""
+    from pass_billing_connector.findings import FINDINGS
+
+    fake = MovingCar(second)
+    monkeypatch.setattr(sync_module, "doors", fake)
+    link_a = Link(LINK.pass_tenant, "pass-a", "garage-a", LINK.billing_tenant, "ag-a")
+    link_b = Link(LINK.pass_tenant, "pass-b", "garage-a", LINK.billing_tenant, "ag-b")
+    report = sync((link_b, link_a), AT)
+    one_b, _one_a = report.links
+    assert one_b.refused is False and one_b.converged is False
+    assert [(a.action, a.identity, a.outcome) for a in one_b.actions] == [
+        ("register", "CAR-X", "refused"), ("register", "CAR-Y", "done"),
+        ("register", "CAR-X", second), ("register", "CAR-Y", "done")]
+    assert [c for c in fake.calls if c[0] == "release-vehicle" and c[1] == "ag-b"] == []
+    (unknown,) = [f for f in one_b.findings if f.code == "STORED_FORM_UNKNOWN"]
+    assert unknown.identity == "CAR-X"
+    assert second in unknown.detail and MovingCar.SECOND_WORDS[second] in unknown.detail
+    sentence = FINDINGS["STORED_FORM_UNKNOWN"]
+    assert "this finding stands if that attempt's register did not come back `done` " \
+           "either" in sentence
+    assert "A second attempt refused at its read writes nothing: the report is then the " \
+           "first attempt's, this finding included" in sentence
 
 # ------------------------------------------------------------ the database
 

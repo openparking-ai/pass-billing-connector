@@ -44,7 +44,10 @@ THE ORDER, AND WHY.
    passes: when another link released a row after this one ran, this link is
    run once more, from fresh reads, before the run ends (``sync``), and its
    report keeps both attempts' actions and takes its findings and verdict
-   from the second.
+   from the second -- unless the second attempt is refused at its read (a
+   module that did not answer, or a refusal of step 1 that began between the
+   attempts): it then wrote nothing, and the report is the first attempt's,
+   not refused, with its actions and the second attempt's findings added.
 
 4. **Release by stored form, never by raw identity, AT THE GARAGE THAT
    STORES IT.** Every row billing holds at a garage whose form is not among
@@ -163,10 +166,25 @@ def sync(links: tuple[Link, ...], at: str) -> Report:
             released for other, released in ran[index + 1:] if other != index
         ):
             again = sync_link(link, at, day)
-            reports[index] = replace(again, actions=reports[index].actions + again.actions)
+            reports[index] = _both_attempts(reports[index], again)
             ran.append((index, _released(again)))
     return Report(at=at, day=day.isoformat(), converged=all(r.converged for r in reports),
                   links=tuple(reports))
+
+
+def _both_attempts(first: LinkReport, again: LinkReport) -> LinkReport:
+    """One report for a link run twice. When the second attempt read and
+    judged, the report keeps both attempts' actions and takes its findings and
+    verdict from the second. When the second attempt was REFUSED at its read
+    -- a module that did not answer, or a refusal of step 1 that began between
+    the attempts -- that attempt wrote nothing, and what the first attempt
+    wrote stands: the report is the first attempt's (not refused; its actions,
+    live register, expected and billing rows), with the second attempt's
+    findings after its own, and the link does not converge. A refused report
+    carries no action, so it is never the base of one that does."""
+    if again.refused:
+        return replace(first, converged=False, findings=first.findings + again.findings)
+    return replace(again, actions=first.actions + again.actions)
 
 
 def _register_refused(report: LinkReport) -> bool:

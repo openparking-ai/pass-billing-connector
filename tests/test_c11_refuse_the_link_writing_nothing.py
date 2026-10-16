@@ -86,6 +86,39 @@ def test_a_read_that_did_not_answer_refuses_with_the_module_words(monkeypatch):
         ("MONTHLY_BILLING_CONFIGURATION", "exit 1: no DSN")]
 
 
+@pytest.mark.guarantee("C11")
+@pytest.mark.parametrize("code, words", [
+    ("GARAGE_PASS_REFUSED", '{"detail": "planted", "field": "garage", '
+                            '"refused": "REFUSAL_GARAGE_NOT_FOUND"}'),
+    ("GARAGE_PASS_CONFIGURATION", "exit 2: the database did not connect"),
+])
+def test_a_garage_register_that_did_not_answer_refuses_with_garage_pass_words(
+    monkeypatch, code, words,
+):
+    """`show-pass` answered and `show-garage-register` did not. Without the
+    garage's register the run cannot tell which cars garage-pass has replaced
+    on the pass, so the pass has no live register: the link is refused before
+    any write, carrying garage-pass's own words -- never read as a pass on
+    which no car was replaced, which would keep a replaced car in billing."""
+
+    class SilentGarageRegister(FakeDoors):
+        def show_garage_register(self, tenant, garage):
+            self.calls.append(("show-garage-register",))
+            return Read(None, code, words)
+
+    # Reads enough for a whole run, so a run that went on would fail on what
+    # it did, not on a script that ran out.
+    pass_ = shown([("AB-123", "garage-a"), ("AB-123", "garage-b")])
+    fake = SilentGarageRegister([pass_] * 2, [register([("garage-a", "stale")])] * 3)
+    monkeypatch.setattr(sync_module, "doors", fake)
+    result = sync_link(LINK, AT, D)
+    assert result.refused is True and result.converged is False
+    assert result.actions == ()
+    assert [(f.code, f.detail) for f in result.findings] == [(code, words)]
+    assert fake.calls == [("show-pass",), ("show-garage-register",), ("show-register",)], \
+        "a refusal wrote"
+
+
 # ------------------------------------------------------------ the database
 
 

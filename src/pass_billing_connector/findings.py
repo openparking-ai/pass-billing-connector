@@ -124,8 +124,12 @@ FINDINGS: dict[str, str] = {
         "nothing on every run, with this finding each time. That is the rule holding, "
         "not a fault of the connector's. When another link of the same run released a "
         "row after this link ran -- a car moving between two linked passes -- the link "
-        "is run once more in that run, and this finding stands only if the second "
-        "attempt was refused too."
+        "is run once more in that run, and the report takes its findings from the "
+        "second attempt, where this finding stands if that attempt's register did not "
+        "come back `done` either, or the identity is live only on that attempt's final "
+        "read. A second attempt refused at its read writes nothing: the report is then "
+        "the first attempt's, this finding included, with the second attempt's findings "
+        "after it."
     ),
     FINDING_PASS_CHANGED_DURING_RUN: (
         "The final read of the pass shows a live register different from the one the "
