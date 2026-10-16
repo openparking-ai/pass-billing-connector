@@ -26,7 +26,7 @@ dependencies = []
 dev = [
   "pytest>=8",
   "ruff>=0.8",
-  "openparking-garage-pass[store] @ git+https://github.com/openparking-ai/garage-pass@bc46752d2f81309495422c18008921dfec2d10a0",
+  "openparking-garage-pass[store] @ git+https://github.com/openparking-ai/garage-pass@253249b5eb52770ec14d026f04f2c39749b75530",
   "openparking-monthly-billing[store] @ git+https://github.com/openparking-ai/monthly-billing@447f83c312158c0687b243756378b2d8be1b454f",
 ]
 

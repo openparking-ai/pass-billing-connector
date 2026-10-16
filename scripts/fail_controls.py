@@ -103,7 +103,7 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "scripts/generate_contract.py",
         '            rows.append(f"| `{match.group(1)}` | `{match.group(3)}` |")',
         source(
-            "            typed = 'bc46752d2f81309495422c18008921dfec2d10a0'  # PLANTED",
+            "            typed = '253249b5eb52770ec14d026f04f2c39749b75530'  # PLANTED",
             '            rows.append(f"| `{match.group(1)}` | `{typed}` |")',
         ),
         "the pinned commit in the contract stops being read from pyproject.toml and "
@@ -150,7 +150,7 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
     "C3/pin": (
         "tests/test_c3_the_command_lines_are_the_only_door.py",
         "pyproject.toml",
-        "garage-pass@bc46752d2f81309495422c18008921dfec2d10a0",
+        "garage-pass@253249b5eb52770ec14d026f04f2c39749b75530",
         "garage-pass@0000000000000000000000000000000000000000",
         "pyproject.toml pins a commit the installed package is not: the suite "
         "would then measure one commit and the contract name another",
@@ -171,6 +171,15 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "        if False:  # PLANTED: a pass may appear in two links",
         "one pass in two links is accepted: two agreements' registers written "
         "from one pass, the single-writer rule broken by the document",
+    ),
+    "C4/case": (
+        "tests/test_c4_links_are_stated_never_inferred.py",
+        "links.py",
+        "    return str(UUID(tenant))",
+        "    return tenant  # PLANTED: the tenant compared as typed",
+        "two links to one agreement whose tenant differs only in letter case are "
+        "accepted, though both modules read it as one tenant: each run, one link "
+        "releases the other pass's cars from billing (OP-NODE-082)",
     ),
     # -- C5: one verb, the instant, the day, the exits --
     "C5/naive": (
@@ -213,6 +222,15 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "    if shown.get(\"state\") != STATE_ACTIVE:",
         "    if False:  # PLANTED: every state covers the day",
         "a suspended or revoked pass keeps its cars in billing's register",
+    ),
+    "C6/exit-only": (
+        "tests/test_c6_the_live_register_on_the_day.py",
+        "live.py",
+        '                and row["vehicle_identity"] not in replaced):',
+        "                and True):  # PLANTED: a replaced car stays live",
+        "a car garage-pass has replaced on the pass stays in billing's register, "
+        "covered at an entry and at an exit, beside the car that replaced it "
+        "(OP-NODE-081)",
     ),
     # -- C7: registers first, releases by stored form --
     "C7/reimplementation": (
@@ -320,10 +338,23 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
     "C9/final-read": (
         "tests/test_c9_the_verdict_is_the_final_read.py",
         "sync.py",
-        "    final_shown, final_register, read_findings = _read_both(link)",
-        "    final_shown, final_register, read_findings = shown, register, []  # PLANTED",
+        "    final_shown, final_replaced, final_register, read_findings = _read_both(link)",
+        source(
+            "    final_shown, final_replaced, final_register, read_findings = (  # PLANTED",
+            "        shown, replaced, register, [])",
+        ),
         "the final read is the first read: billing's rows before the writes are "
         "compared with the expectation, so every run that wrote anything diverges",
+    ),
+    "C9/rerun": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "sync.py",
+        "        if _register_refused(reports[index]) and any(",
+        "        if False and any(  # PLANTED: a held link is never run again",
+        "a car moving between two linked passes holds up the receiving link: its "
+        "register is refused while the other link still holds the car, nothing is "
+        "released for it, and its ended cars stay in billing until the next run "
+        "(OP-NODE-083)",
     ),
     # -- C10: convergence, not a journal --
     "C10": (
@@ -421,7 +452,7 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "doors.py",
         '    done = _run([MONTHLY_BILLING, "show-register", "--tenant", tenant,',
         '    done = _run([MONTHLY_BILLING, "record-payment", "--tenant", tenant,  # PLANTED',
-        "the connector runs a verb that is not one of the four registration and "
+        "the connector runs a verb that is not one of the five registration and "
         "read verbs: the claim that it touches registrations only is false",
     ),
     # -- C16: the fixture axis --

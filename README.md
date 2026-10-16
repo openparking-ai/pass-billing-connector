@@ -40,6 +40,12 @@ import of either package, a database driver, an environment read and a
 each agreement, by tenant and id. The two databases share no key, and the
 connector never guesses a link from matching text.
 
+**A replaced car is not live.** After `replace-car`, garage-pass keeps the
+old car's registration open and marks only its QR exit only: the car may not
+enter, and it still gets out. `show-pass` carries no exit-only flag, so the
+connector reads it from the QRs `show-garage-register` publishes. Billing's
+register has no direction, so the old car leaves it.
+
 **Registers first, releases by stored form.** Every identity live on the day
 is registered through billing's door, as garage-pass recorded it, and the
 stored form per garage is taken from what the door prints back. Then every
@@ -56,7 +62,10 @@ door did not tell me", so a car billing already holds keeps its rows, the
 finding names the identity, and the next run re-reads. A *refused* register —
 a car held by another agreement — is not transient: it stands until an
 operator moves the car, and until then that link releases nothing on every
-run, saying so each time. That is the rule holding, not a fault.
+run, saying so each time. That is the rule holding, not a fault. A car moving
+between two linked passes is the one case the run settles itself: when
+another link of the same run released a row after the held link ran, the held
+link is run once more, from fresh reads, before the run ends.
 
 **The verdict is the final read.** After the writes both sides are read
 again. Any difference is a divergence, named per link, per garage, per form,

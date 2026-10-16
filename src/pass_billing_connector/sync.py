@@ -11,8 +11,9 @@ THE ORDER, AND WHY.
    module that would not answer the read is a finding carrying the module's
    own words.
 
-2. **Register every live identity** (``live.py``), as garage-pass recorded it,
-   through ``register-vehicle`` -- idempotent at the door: a row already this
+2. **Register every live identity** (``live.py``: a car garage-pass has
+   replaced on the pass, its QR exit only, is not live), as garage-pass
+   recorded it, through ``register-vehicle`` -- idempotent at the door: a row already this
    agreement's is left and its stored form still printed. The printed form
    per garage is COLLECTED, and it is the only source of a stored form the
    connector ever has. The connector never reimplements billing's
@@ -38,7 +39,12 @@ THE ORDER, AND WHY.
    and until then this link releases nothing on every run, loudly (exit 1,
    the finding, the identity, the door's words). That is this rule holding,
    not a fault of the connector's: it cannot tell a held car from a door that
-   did not answer, and deletes nothing on either.
+   did not answer, and deletes nothing on either. The one exception is a car
+   another link OF THE SAME RUN lets go -- a car moving between two linked
+   passes: when another link released a row after this one ran, this link is
+   run once more, from fresh reads, before the run ends (``sync``), and its
+   report keeps both attempts' actions and takes its findings and verdict
+   from the second.
 
 4. **Release by stored form, never by raw identity, AT THE GARAGE THAT
    STORES IT.** Every row billing holds at a garage whose form is not among
@@ -89,10 +95,13 @@ read disagrees exits 1.
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import replace
 from datetime import date, datetime
 
 from pass_billing_connector import doors
 from pass_billing_connector.findings import (
+    ACTION_REGISTER,
+    ACTION_RELEASE,
     FINDING_COLLISION,
     FINDING_DIVERGENCE,
     FINDING_GARAGE_IDS_AMBIGUOUS,
@@ -106,13 +115,14 @@ from pass_billing_connector.findings import (
     FINDING_REGISTRAR_NOT_OUTSIDE,
     FINDING_STORED_FORM_UNKNOWN,
     OUTCOME_DONE,
+    OUTCOME_REFUSED,
     REASON_LIVE,
     REASON_NOT_LIVE_FORM,
     SIDE_BILLING_ONLY,
     SIDE_PASS_ONLY,
 )
 from pass_billing_connector.links import Link
-from pass_billing_connector.live import LiveRegister, live_register
+from pass_billing_connector.live import LiveRegister, exit_only_identities, live_register
 from pass_billing_connector.report import Action, Finding, LinkReport, Report, Row
 
 REGISTRAR_OUTSIDE = "outside"
@@ -138,9 +148,34 @@ def day_of(at: str) -> date:
 
 def sync(links: tuple[Link, ...], at: str) -> Report:
     day = day_of(at)
-    reports = tuple(sync_link(link, at, day) for link in links)
+    reports = [sync_link(link, at, day) for link in links]
+    # A CAR MOVING BETWEEN TWO LINKED PASSES. The receiving link's register is
+    # refused while the giving link's agreement still holds the car, so the
+    # receiving link releases nothing -- and the giving link, later in the
+    # file, then lets the car go. Such a link is run ONCE MORE, from fresh
+    # reads, when another link released a row after it ran: the car is
+    # registered and this link's releases are made in the same run, instead of
+    # its ended cars staying in billing until the next one. In run order:
+    # (link, whether that run released a row).
+    ran = [(index, _released(report)) for index, report in enumerate(reports)]
+    for index, link in enumerate(links):
+        if _register_refused(reports[index]) and any(
+            released for other, released in ran[index + 1:] if other != index
+        ):
+            again = sync_link(link, at, day)
+            reports[index] = replace(again, actions=reports[index].actions + again.actions)
+            ran.append((index, _released(again)))
     return Report(at=at, day=day.isoformat(), converged=all(r.converged for r in reports),
-                  links=reports)
+                  links=tuple(reports))
+
+
+def _register_refused(report: LinkReport) -> bool:
+    return any(a.action == ACTION_REGISTER and a.outcome == OUTCOME_REFUSED
+               for a in report.actions)
+
+
+def _released(report: LinkReport) -> bool:
+    return any(a.action == ACTION_RELEASE and a.outcome == OUTCOME_DONE for a in report.actions)
 
 
 def _refused(link: Link, findings: list[Finding]) -> LinkReport:
@@ -152,15 +187,29 @@ def _refused(link: Link, findings: list[Finding]) -> LinkReport:
     )
 
 
-def _read_both(link: Link) -> tuple[dict | None, dict | None, list[Finding]]:
+def _read_both(link: Link) -> tuple[dict | None, frozenset[str], dict | None, list[Finding]]:
     findings: list[Finding] = []
-    pass_read = doors.show_pass(link.pass_tenant, link.pass_garage, link.pass_id)
-    if not pass_read.ok:
-        findings.append(Finding(pass_read.finding, pass_read.detail))
+    shown, replaced = _read_pass(link, findings)
     register_read = doors.show_register(link.billing_tenant, link.agreement_id)
     if not register_read.ok:
         findings.append(Finding(register_read.finding, register_read.detail))
-    return pass_read.document, register_read.document, findings
+    return shown, replaced, register_read.document, findings
+
+
+def _read_pass(link: Link, findings: list[Finding]) -> tuple[dict | None, frozenset[str]]:
+    """The pass as ``show-pass`` printed it, and the cars garage-pass has
+    replaced on it, from the garage's register (``live.py``). Without the
+    second read the pass has no live register, so a garage register that would
+    not answer stands in for the pass read, carrying garage-pass's words."""
+    pass_read = doors.show_pass(link.pass_tenant, link.pass_garage, link.pass_id)
+    if not pass_read.ok:
+        findings.append(Finding(pass_read.finding, pass_read.detail))
+        return None, frozenset()
+    codes_read = doors.show_garage_register(link.pass_tenant, link.pass_garage)
+    if not codes_read.ok:
+        findings.append(Finding(codes_read.finding, codes_read.detail))
+        return None, frozenset()
+    return pass_read.document, exit_only_identities(codes_read.document, link.pass_id)
 
 
 def _link_refusals(shown: dict, register: dict) -> list[Finding]:
@@ -213,7 +262,7 @@ def _text(value: object) -> str:
 
 
 def sync_link(link: Link, at: str, day: date) -> LinkReport:
-    shown, register, findings = _read_both(link)
+    shown, replaced, register, findings = _read_both(link)
     if shown is None or register is None:
         return _refused(link, findings)
     findings = _link_refusals(shown, register)
@@ -222,7 +271,7 @@ def sync_link(link: Link, at: str, day: date) -> LinkReport:
 
     garages = tuple(sorted(register["covered_garages"]))
     actions: list[Action] = []
-    first_live = live_register(shown, day)
+    first_live = live_register(shown, day, replaced)
 
     # 2. Registers, collecting the door's forms. forms[(garage, form)] is the
     #    set of live identities the door stored in that form there.
@@ -250,7 +299,7 @@ def sync_link(link: Link, at: str, day: date) -> LinkReport:
         _release_stale(link, garages, actions, forms, findings)
 
     # 5. The final read decides.
-    final_shown, final_register, read_findings = _read_both(link)
+    final_shown, final_replaced, final_register, read_findings = _read_both(link)
     findings.extend(read_findings)
     if final_shown is None or final_register is None:
         return LinkReport(
@@ -263,7 +312,7 @@ def sync_link(link: Link, at: str, day: date) -> LinkReport:
     # at the start must still hold at the end.
     final_refusals = _link_refusals(final_shown, final_register)
     findings.extend(final_refusals)
-    final_live = live_register(final_shown, day)
+    final_live = live_register(final_shown, day, final_replaced)
     if final_live.pairs() != first_live.pairs():
         findings.append(Finding(
             FINDING_PASS_CHANGED_DURING_RUN,

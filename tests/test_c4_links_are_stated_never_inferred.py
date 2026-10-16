@@ -1,8 +1,10 @@
 """C4 -- links are stated, never inferred.
 
 The pure half: every refusal of the links document, by name, before anything
-is read. The database half: `pass_garage` is an ACCESS KEY -- a garage the
-pass does not name is garage-pass's own refusal -- `REFUSAL_PASS_NOT_FOUND`
+is read -- a duplicate caught whatever the letter case of its tenant, since
+both modules read a tenant as a uuid (measured below). The database half:
+`pass_garage` is an ACCESS KEY -- a garage the pass does not name is
+garage-pass's own refusal -- `REFUSAL_PASS_NOT_FOUND`
 naming the set the pass does name, its G25, measured at the pinned commit; a
 garage the tenant does not hold at all is `REFUSAL_GARAGE_NOT_FOUND` -- surfaced
 on the link by name and never read as an empty register; and the sets compared
@@ -72,6 +74,28 @@ def test_the_same_pass_id_under_two_tenants_is_two_passes():
     assert len(two) == 2
 
 
+#: A tenant with letters in it, so its two spellings differ only in case.
+LETTERS = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+
+
+@pytest.mark.guarantee("C4")
+@pytest.mark.parametrize("second, fragment", [
+    (link(pass_tenant=LETTERS.upper(), billing_tenant=LETTERS, agreement_id="ag-2"),
+     "pass 'pass-1'"),
+    (link(pass_tenant=LETTERS, billing_tenant=LETTERS.upper(), pass_id="pass-2"),
+     "agreement 'ag-1'"),
+])
+def test_a_duplicate_is_refused_whatever_the_letter_case_of_its_tenant(second, fragment):
+    """Both modules read `--tenant` as a uuid, so `ABC...` and `abc...` are one
+    tenant there; two links to one agreement (or from one pass) typed that way
+    would each release the other's cars on every run. Refused like any other
+    duplicate."""
+    first = link(pass_tenant=LETTERS, billing_tenant=LETTERS)
+    with pytest.raises(LinksRefused) as refused:
+        links_from({"links": [first, second]})
+    assert fragment in str(refused.value)
+
+
 @pytest.mark.guarantee("C4")
 def test_an_unreadable_or_non_json_file_is_exit_2(tmp_path):
     missing = tmp_path / "missing.json"
@@ -131,6 +155,23 @@ def test_the_access_key_is_not_a_scope(pair, monkeypatch):
     standard_world(pair)
     pair.gp_register("pass-1", "garage-a", "AB-123", "2026-09-01")
     code, report = pair.sync([pair.link(pass_garage="garage-b")], AT, monkeypatch=monkeypatch)
+    assert code == 0, report
+    assert pair.mb_rows("ag-1") == {("garage-a", "ab123"), ("garage-b", "AB-123")}
+
+
+@needs_databases
+@pytest.mark.guarantee("C4")
+def test_both_modules_read_a_tenant_in_capitals_as_the_same_tenant(pair, monkeypatch):
+    """The premise of comparing tenants as uuids, measured at the pinned
+    commits: a link whose two tenants are typed in capitals reads and writes
+    the very pass and agreement the lower-case spelling names."""
+    standard_world(pair)
+    pair.gp_register("pass-1", "garage-a", "AB-123", "2026-09-01")
+    capitals = pair.link(pass_tenant=pair.gp_tenant.upper(),
+                         billing_tenant=pair.mb_tenant.upper())
+    assert capitals["pass_tenant"] != pair.gp_tenant
+    assert capitals["billing_tenant"] != pair.mb_tenant
+    code, report = pair.sync([capitals], AT, monkeypatch=monkeypatch)
     assert code == 0, report
     assert pair.mb_rows("ag-1") == {("garage-a", "ab123"), ("garage-b", "AB-123")}
 

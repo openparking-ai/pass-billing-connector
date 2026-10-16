@@ -40,7 +40,8 @@ def _refused_with(monkeypatch, pass_document, register_document, code):
     assert result.refused is True and result.converged is False
     assert result.actions == ()
     assert [f.code for f in result.findings] == [code], result.findings
-    assert fake.calls == [("show-pass",), ("show-register",)], "a refusal wrote"
+    assert fake.calls == [("show-pass",), ("show-garage-register",), ("show-register",)], \
+        "a refusal wrote"
     return result.findings[0]
 
 

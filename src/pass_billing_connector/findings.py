@@ -122,7 +122,10 @@ FINDINGS: dict[str, str] = {
         "A `refused` register -- a car held by ANOTHER agreement -- is not transient: it "
         "stands until an operator moves the car, and until then the link releases "
         "nothing on every run, with this finding each time. That is the rule holding, "
-        "not a fault of the connector's."
+        "not a fault of the connector's. When another link of the same run released a "
+        "row after this link ran -- a car moving between two linked passes -- the link "
+        "is run once more in that run, and this finding stands only if the second "
+        "attempt was refused too."
     ),
     FINDING_PASS_CHANGED_DURING_RUN: (
         "The final read of the pass shows a live register different from the one the "

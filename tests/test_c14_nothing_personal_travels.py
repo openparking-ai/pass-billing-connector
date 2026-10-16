@@ -2,7 +2,8 @@
 
 Every fixture pass carries a holder -- a name, an `example.com` address, a
 phone -- because the product's passes do. None of it reaches `show-pass`
-(garage-pass's G26), so none of it can reach the report; and this test
+(garage-pass's G26) or `show-garage-register` (its G27), so none of it can
+reach the report; and this test
 renders a report from such a pass and looks, rather than trusting either
 sentence. The key set is closed (C12); this is the check on the VALUES.
 """
@@ -36,9 +37,12 @@ def test_a_report_from_a_pass_with_a_holder_carries_none_of_the_holder(pair, mon
     assert "holder@example.com" not in text
     assert "A Holder" not in text
     assert "Fleet" not in text  # the label
-    # And the read itself carries nothing of the holder, measured here too.
+    # And the reads themselves carry nothing of the holder, measured here too:
+    # the pass read, and the garage register read for its QRs.
     shown = json.dumps(pair.gp_show("pass-1", "garage-a"))
     assert "holder" not in shown and "example.com" not in shown and "Fleet" not in shown
+    codes = pair.gp_run("show-garage-register", "--garage", "garage-a").stdout
+    assert "holder" not in codes and "example.com" not in codes and "Fleet" not in codes
 
 
 @needs_databases
