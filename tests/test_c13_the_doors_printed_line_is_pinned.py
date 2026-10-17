@@ -104,7 +104,8 @@ def test_an_ambiguous_covered_set_refuses_the_link_before_any_write(monkeypatch)
                 "22222222-2222-2222-2222-222222222222", "ag-1")
     result = sync_link(link, AT, date(2026, 9, 16))
     assert result.refused is True and result.converged is False and result.actions == ()
-    assert fake.calls == [("show-pass",), ("show-register",)], "a refusal wrote"
+    assert fake.calls == [("show-pass",), ("show-garage-register",), ("show-register",)], \
+        "a refusal wrote"
     (finding,) = result.findings
     assert finding.code == "GARAGE_IDS_AMBIGUOUS" and finding.garage == "g: 2"
     assert "'g'" in finding.detail and "'g: 2'" in finding.detail

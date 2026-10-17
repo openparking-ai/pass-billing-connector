@@ -103,7 +103,7 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "scripts/generate_contract.py",
         '            rows.append(f"| `{match.group(1)}` | `{match.group(3)}` |")',
         source(
-            "            typed = 'bc46752d2f81309495422c18008921dfec2d10a0'  # PLANTED",
+            "            typed = '253249b5eb52770ec14d026f04f2c39749b75530'  # PLANTED",
             '            rows.append(f"| `{match.group(1)}` | `{typed}` |")',
         ),
         "the pinned commit in the contract stops being read from pyproject.toml and "
@@ -150,7 +150,7 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
     "C3/pin": (
         "tests/test_c3_the_command_lines_are_the_only_door.py",
         "pyproject.toml",
-        "garage-pass@bc46752d2f81309495422c18008921dfec2d10a0",
+        "garage-pass@253249b5eb52770ec14d026f04f2c39749b75530",
         "garage-pass@0000000000000000000000000000000000000000",
         "pyproject.toml pins a commit the installed package is not: the suite "
         "would then measure one commit and the contract name another",
@@ -171,6 +171,15 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "        if False:  # PLANTED: a pass may appear in two links",
         "one pass in two links is accepted: two agreements' registers written "
         "from one pass, the single-writer rule broken by the document",
+    ),
+    "C4/case": (
+        "tests/test_c4_links_are_stated_never_inferred.py",
+        "links.py",
+        "    return str(UUID(tenant))",
+        "    return tenant  # PLANTED: the tenant compared as typed",
+        "two links to one agreement whose tenant differs only in letter case are "
+        "accepted, though both modules read it as one tenant: each run, one link "
+        "releases the other pass's cars from billing (OP-NODE-082)",
     ),
     # -- C5: one verb, the instant, the day, the exits --
     "C5/naive": (
@@ -213,6 +222,15 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "    if shown.get(\"state\") != STATE_ACTIVE:",
         "    if False:  # PLANTED: every state covers the day",
         "a suspended or revoked pass keeps its cars in billing's register",
+    ),
+    "C6/exit-only": (
+        "tests/test_c6_the_live_register_on_the_day.py",
+        "live.py",
+        '                and row["vehicle_identity"] not in replaced):',
+        "                and True):  # PLANTED: a replaced car stays live",
+        "a car garage-pass has replaced on the pass stays in billing's register, "
+        "covered at an entry and at an exit, beside the car that replaced it "
+        "(OP-NODE-081)",
     ),
     # -- C7: registers first, releases by stored form --
     "C7/reimplementation": (
@@ -320,10 +338,84 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
     "C9/final-read": (
         "tests/test_c9_the_verdict_is_the_final_read.py",
         "sync.py",
-        "    final_shown, final_register, read_findings = _read_both(link)",
-        "    final_shown, final_register, read_findings = shown, register, []  # PLANTED",
+        "    final_shown, final_replaced, final_register, read_findings = _read_both(link)",
+        source(
+            "    final_shown, final_replaced, final_register, read_findings = (  # PLANTED",
+            "        shown, replaced, register, [])",
+        ),
         "the final read is the first read: billing's rows before the writes are "
         "compared with the expectation, so every run that wrote anything diverges",
+    ),
+    "C9/rerun": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "sync.py",
+        "        if _register_refused(reports[index]) and any(",
+        "        if False and any(  # PLANTED: a held link is never run again",
+        "a car moving between two linked passes holds up the receiving link: its "
+        "register is refused while the other link still holds the car, nothing is "
+        "released for it, and its ended cars stay in billing until the next run "
+        "(OP-NODE-083)",
+    ),
+    "C9/rerun-chain": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "sync.py",
+        "            ran.append((index, _released(again)))",
+        "            pass  # PLANTED: a second attempt's releases are not tracked",
+        "a chain is not followed: a link waiting on a car that only another link's "
+        "SECOND attempt lets go is never run again, so that car is in no agreement's "
+        "billing until the next run (OP-NODE-083)",
+    ),
+    "C9/later-read-words": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "findings.py",
+        "_A_LATER_READ = (",
+        source(
+            '_A_LATER_READ = "Nothing was written for this link."  # PLANTED',
+            "_PLANTED_UNUSED = (",
+        ),
+        "the published sentence of a read that did not answer says nothing was written "
+        "for the link, while the report beside it lists the writes the run already made "
+        "before that read (billing's read before the releases, the final read, a second "
+        "attempt's read), and they stand in billing",
+    ),
+    "C9/later-refusal-words": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "findings.py",
+        "_A_LATER_REFUSAL = (",
+        source(
+            '_A_LATER_REFUSAL = "Refused before any write."  # PLANTED',
+            "_PLANTED_UNUSED = (",
+        ),
+        "the published sentence of one of step 1's refusals says the link was refused "
+        "before any write, while the same refusal found on the final read or a second "
+        "attempt's read stands beside writes the run already made",
+    ),
+    "C9/rerun-refused": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "sync.py",
+        "    if again.refused:",
+        "    if False:  # PLANTED: a refused second attempt replaces the first",
+        "a second attempt refused at its read replaces the first attempt's report: "
+        "the link reads `refused`, which publishes that nothing was written, beside "
+        "the first attempt's registers that were done and stand in billing",
+    ),
+    "C9/second-attempt-words": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "findings.py",
+        "        \"second attempt, where this finding stands if that attempt's register did not \"",
+        "        \"second attempt, where this finding stands only if it was refused too, not \"",
+        "the published STORED_FORM_UNKNOWN sentence says the finding stands on a second "
+        "attempt only when its register was refused again, while the run names it for a "
+        "`failed` or `unparseable` register too: the contract and the report disagree",
+    ),
+    "C9/final-replaced": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "sync.py",
+        "    final_live = live_register(final_shown, day, final_replaced)",
+        "    final_live = live_register(final_shown, day, replaced)  # PLANTED",
+        "the final read takes its replaced cars from the first read: a car garage-pass "
+        "replaced under the run is still live on the final read, the pass is not named "
+        "as changed, and the link converges with the replaced car in billing",
     ),
     # -- C10: convergence, not a journal --
     "C10": (
@@ -363,6 +455,21 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "a covered set of `g` and `g: 2` is written to: the door's line for one "
         "garage reads as the other's, and a release's answer is attributed by a "
         "guess",
+    ),
+    "C11/garage-register": (
+        "tests/test_c11_refuse_the_link_writing_nothing.py",
+        "sync.py",
+        source(
+            "        findings.append(Finding(codes_read.finding, codes_read.detail))",
+            "        return None, frozenset()",
+        ),
+        source(
+            "        findings.append(Finding(codes_read.finding, codes_read.detail))",
+            "        return pass_read.document, frozenset()  # PLANTED: no car replaced",
+        ),
+        "a garage register that did not answer is read as a pass on which no car was "
+        "replaced: the link is written to, and a replaced car is registered again "
+        "(OP-NODE-081 back, on any read error)",
     ),
     # -- C12: the report's shape is published --
     "C12/code": (
@@ -421,7 +528,7 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "doors.py",
         '    done = _run([MONTHLY_BILLING, "show-register", "--tenant", tenant,',
         '    done = _run([MONTHLY_BILLING, "record-payment", "--tenant", tenant,  # PLANTED',
-        "the connector runs a verb that is not one of the four registration and "
+        "the connector runs a verb that is not one of the five registration and "
         "read verbs: the claim that it touches registrations only is false",
     ),
     # -- C16: the fixture axis --
