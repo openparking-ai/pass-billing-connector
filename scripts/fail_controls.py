@@ -356,6 +356,40 @@ CONTROLS: dict[str, tuple[str, str, str, str, str]] = {
         "released for it, and its ended cars stay in billing until the next run "
         "(OP-NODE-083)",
     ),
+    "C9/rerun-chain": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "sync.py",
+        "            ran.append((index, _released(again)))",
+        "            pass  # PLANTED: a second attempt's releases are not tracked",
+        "a chain is not followed: a link waiting on a car that only another link's "
+        "SECOND attempt lets go is never run again, so that car is in no agreement's "
+        "billing until the next run (OP-NODE-083)",
+    ),
+    "C9/later-read-words": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "findings.py",
+        "_A_LATER_READ = (",
+        source(
+            '_A_LATER_READ = "Nothing was written for this link."  # PLANTED',
+            "_PLANTED_UNUSED = (",
+        ),
+        "the published sentence of a read that did not answer says nothing was written "
+        "for the link, while the report beside it lists the writes the run already made "
+        "before that read (billing's read before the releases, the final read, a second "
+        "attempt's read), and they stand in billing",
+    ),
+    "C9/later-refusal-words": (
+        "tests/test_c9_the_verdict_is_the_final_read.py",
+        "findings.py",
+        "_A_LATER_REFUSAL = (",
+        source(
+            '_A_LATER_REFUSAL = "Refused before any write."  # PLANTED',
+            "_PLANTED_UNUSED = (",
+        ),
+        "the published sentence of one of step 1's refusals says the link was refused "
+        "before any write, while the same refusal found on the final read or a second "
+        "attempt's read stands beside writes the run already made",
+    ),
     "C9/rerun-refused": (
         "tests/test_c9_the_verdict_is_the_final_read.py",
         "sync.py",

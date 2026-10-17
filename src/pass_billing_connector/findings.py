@@ -5,14 +5,16 @@ tables from this file, and ``tests/test_c12_the_report_shape_is_published.py``
 requires every code the connector emits to be listed here -- a finding nobody
 published is refused by the test that scans the source for emitted codes.
 
-A finding is a fact about one link on this run. A refusal of the link
-(``REFUSES_THE_LINK``) is a finding that stopped the connector before it wrote
-anything for that link; the rest are recorded and the final read decides.
+A finding is a fact about one link on this run. On the link's first read, a
+refusal (one of step 1's, or a read a module would not answer) stops the
+connector before it writes anything for that link. The same finding on a later
+read of the run stands beside the writes already made, which the link's actions
+list. The rest are recorded and the final read decides.
 """
 
 from __future__ import annotations
 
-#: The link was refused before any write, by name. Each one names what differed.
+#: Step 1's refusals, by name. Each one names what differed.
 FINDING_REGISTRAR_NOT_OUTSIDE = "REGISTRAR_NOT_OUTSIDE"
 FINDING_GARAGE_SETS_DIFFER = "GARAGE_SETS_DIFFER"
 FINDING_PASS_UNREADABLE = "PASS_UNREADABLE"
@@ -35,68 +37,84 @@ FINDING_PASS_CHANGED_DURING_RUN = "PASS_CHANGED_DURING_RUN"
 FINDING_DIVERGENCE = "DIVERGENCE"
 FINDING_PASS_REGISTER_ASYMMETRIC = "PASS_REGISTER_ASYMMETRIC"
 
+#: What one of step 1's refusals means for the link's writes, said once for all
+#: of them: they are checked on the link's first read, again on the final read,
+#: and on a second attempt's read.
+_A_LATER_REFUSAL = (
+    "On the link's first read it refuses the link before any write. On a later "
+    "read of the run -- the final read, or a second attempt's read -- the writes "
+    "already made stand, the link's actions list them, and the link does not "
+    "converge."
+)
+#: What a read that did not answer means for the link's writes, said once for
+#: every read finding that names a module.
+_A_LATER_READ = (
+    "When it is the link's first read, the link is refused and nothing was written "
+    "for it. When it is a later read of the run -- the final read, a second "
+    "attempt's read, or billing's read before the releases -- the writes already "
+    "made stand, and the link's actions list them."
+)
+
 FINDINGS: dict[str, str] = {
     FINDING_REGISTRAR_NOT_OUTSIDE: (
         "The agreement's registrar is not `outside`, so its register is monthly "
-        "billing's own to write and the connector writes nothing for this link. "
-        "Refused before any write."
+        "billing's own to write, not the connector's. " + _A_LATER_REFUSAL
     ),
     FINDING_GARAGE_SETS_DIFFER: (
         "The garages the pass names and the garages the agreement covers are not "
         "the same set, compared as exact text. A link whose two sides disagree on "
-        "WHERE has no register to make equal. Refused before any write; the finding "
-        "carries both sets."
+        "WHERE has no register to make equal. The finding carries both sets. "
+        + _A_LATER_REFUSAL
     ),
     FINDING_PASS_UNREADABLE: (
         "garage-pass holds the pass but cannot read it (`unreadable` on the read is "
-        "not null), so its valid days are not known. Refused before any write; the "
-        "finding carries garage-pass's own refusal."
+        "not null), so its valid days are not known. The finding carries "
+        "garage-pass's own refusal. " + _A_LATER_REFUSAL
     ),
     FINDING_PASS_GARAGE_UNREADABLE: (
         "A garage the pass names is stored unreadable in garage-pass "
-        "(`unreadable_garages`). Refused before any write, naming the garage and "
-        "garage-pass's own refusal."
+        "(`unreadable_garages`). The finding names the garage and carries "
+        "garage-pass's own refusal. " + _A_LATER_REFUSAL
     ),
     FINDING_PASS_ROWS_OUTSIDE_ITS_GARAGES: (
         "garage-pass shows a registration row at a garage the pass does not name "
-        "(`garages_not_named`). Refused before any write, naming the garages."
+        "(`garages_not_named`). The finding names the garages. " + _A_LATER_REFUSAL
     ),
     FINDING_REGISTER_ROWS_OUTSIDE_COVERED_SET: (
         "monthly billing shows a registration row at a garage the agreement's latest "
-        "version does not cover (`garages_not_covered`). Refused before any write, "
-        "naming the garages."
+        "version does not cover (`garages_not_covered`). The finding names the "
+        "garages. " + _A_LATER_REFUSAL
     ),
     FINDING_GARAGE_IDS_AMBIGUOUS: (
         "One covered garage's id is another covered garage's id plus the door's "
         "separator (`: `) plus anything -- `g` and `g: 2` -- so the door's printed "
         "line `  at garage {id}: {form}` has two readings and no parser can tell "
-        "them apart. Refused before any write, naming each such pair; the parser is "
-        "never asked the question."
+        "them apart. The finding names each such pair, and the parser is never "
+        "asked the question. " + _A_LATER_REFUSAL
     ),
     FINDING_GARAGE_PASS_REFUSED: (
         "garage-pass refused the read by name (its exit 3): a wrong tenant, a garage "
         "the pass does not name, a pass it does not hold. The finding carries the "
-        "module's own refusal code and detail. Nothing was written for this link."
+        "module's own refusal code and detail. " + _A_LATER_READ
     ),
     FINDING_GARAGE_PASS_CONFIGURATION: (
         "garage-pass answered with a configuration sentence (its exit 2: no DSN, a "
-        "database that did not connect). The finding carries the sentence. Nothing "
-        "was written for this link."
+        "database that did not connect). The finding carries the sentence. "
+        + _A_LATER_READ
     ),
     FINDING_MONTHLY_BILLING_REFUSED: (
         "monthly-billing refused or could not find what the read named (its exit 2: "
         "REFUSED or NOT FOUND on stderr) -- a wrong tenant, an agreement it does not "
-        "hold. The finding carries the module's own sentence. Nothing was written for "
-        "this link."
+        "hold. The finding carries the module's own sentence. " + _A_LATER_READ
     ),
     FINDING_MONTHLY_BILLING_CONFIGURATION: (
         "monthly-billing exited with a status the connector does not read as a "
         "refusal (no DSN, a database that did not connect). The finding carries what "
-        "it printed. Nothing was written for this link."
+        "it printed. " + _A_LATER_READ
     ),
     FINDING_GARAGE_PASS_UNPARSEABLE: (
         "garage-pass exited 0 but what it printed is not the JSON the connector "
-        "reads. The finding carries the output. Nothing was written for this link."
+        "reads. The finding carries the output. " + _A_LATER_READ
     ),
     FINDING_MONTHLY_BILLING_UNPARSEABLE: (
         "monthly-billing exited 0 but what it printed is not the JSON, or not the "
