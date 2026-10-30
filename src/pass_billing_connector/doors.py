@@ -22,6 +22,11 @@ garage-pass (``show-pass --tenant T --garage G --pass-id P``)
   (``{"refused": code, "field": ..., "detail": ...}``), exit 3. The machine's
   configuration is a sentence on stderr, exit 2.
 
+garage-pass (``show-garage-register --tenant T --garage G``)
+  the same exits; read for its ``codes`` alone (each ``pass``, ``state``,
+  ``bound_identity``, ``exit_only``), because ``show-pass`` carries no
+  exit-only flag and a car garage-pass has replaced on the pass is not live.
+
 monthly-billing (``show-register --tenant T --agreement A``)
   exit 0, JSON on stdout, nine keys: ``agreement``, ``version``, ``registrar``,
   ``status``, ``cancelled_effective_day``, ``home_garage``, ``covered_garages``,
@@ -151,8 +156,19 @@ def _json_or_none(text: str) -> dict | None:
 
 
 def show_pass(tenant: str, garage: str, pass_id: str) -> Read:
-    done = _run([GARAGE_PASS, "show-pass", "--tenant", tenant, "--garage", garage,
-                 "--pass-id", pass_id])
+    return _garage_pass_read(_run([GARAGE_PASS, "show-pass", "--tenant", tenant, "--garage",
+                                   garage, "--pass-id", pass_id]))
+
+
+def show_garage_register(tenant: str, garage: str) -> Read:
+    """The garage's register, read for its ``codes`` alone: ``show-pass`` carries
+    no exit-only flag, and this is where garage-pass publishes it, per QR
+    (``live.exit_only_identities``)."""
+    return _garage_pass_read(_run([GARAGE_PASS, "show-garage-register", "--tenant", tenant,
+                                   "--garage", garage]))
+
+
+def _garage_pass_read(done: subprocess.CompletedProcess) -> Read:
     if done.returncode == 0:
         document = _json_or_none(done.stdout)
         if document is None:

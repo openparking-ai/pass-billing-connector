@@ -18,8 +18,9 @@ nothing about which garages are reconciled.
 
 Unknown keys are refused, a missing key is refused, a pass or an agreement
 appearing in two links is refused -- each by name, before anything is read
-from either module. The connector has no database: this document is the whole
-of what it knows.
+from either module. A tenant is compared as the uuid both modules read, so
+the same tenant typed in another letter case is still the same tenant. The
+connector has no database: this document is the whole of what it knows.
 """
 
 from __future__ import annotations
@@ -75,8 +76,8 @@ def links_from(document: object) -> tuple[Link, ...]:
     seen_agreements: dict[tuple[str, str], int] = {}
     for index, item in enumerate(items):
         link = _one_link(index, item)
-        pass_key = (link.pass_tenant, link.pass_id)
-        agreement_key = (link.billing_tenant, link.agreement_id)
+        pass_key = (_tenant_key(link.pass_tenant), link.pass_id)
+        agreement_key = (_tenant_key(link.billing_tenant), link.agreement_id)
         if pass_key in seen_passes:
             raise LinksRefused(
                 f"link {index}: pass {link.pass_id!r} of tenant {link.pass_tenant} already "
@@ -93,6 +94,14 @@ def links_from(document: object) -> tuple[Link, ...]:
         seen_agreements[agreement_key] = index
         links.append(link)
     return tuple(links)
+
+
+def _tenant_key(tenant: str) -> str:
+    """A tenant in the form both modules read it: their ``--tenant`` is a
+    uuid, so ``ABC...`` and ``abc...`` are one tenant there, and a duplicate
+    is one here however its letters were typed. Only the comparison uses this
+    form; the link keeps the text as written."""
+    return str(UUID(tenant))
 
 
 def _one_link(index: int, item: object) -> Link:

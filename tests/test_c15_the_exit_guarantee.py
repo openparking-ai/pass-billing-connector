@@ -1,7 +1,8 @@
 """C15 -- the exit guarantee.
 
 The connector touches registrations only. Its subprocess calls are exactly
-four verbs -- read from `doors.py`'s source; its own command line has one
+five verbs, three reads and two registration writes -- read from `doors.py`'s
+source; its own command line has one
 verb, `sync`; no key of its report could deny an exit; and garage-pass's own
 access answer at a lane is the same before and after a run. Nothing here can
 trap a car in a garage.
@@ -22,7 +23,8 @@ from pass_billing_connector.report import report_keys
 ROOT = Path(__file__).resolve().parent.parent
 DOORS = ROOT / "src" / "pass_billing_connector" / "doors.py"
 
-PUBLISHED_VERBS = {"show-pass", "show-register", "register-vehicle", "release-vehicle"}
+PUBLISHED_VERBS = {"show-pass", "show-garage-register", "show-register", "register-vehicle",
+                   "release-vehicle"}
 
 
 def subprocess_verbs() -> set[str]:
@@ -39,7 +41,7 @@ def subprocess_verbs() -> set[str]:
 
 
 @pytest.mark.guarantee("C15")
-def test_the_subprocess_verbs_are_exactly_the_four_registration_and_read_verbs():
+def test_the_subprocess_verbs_are_exactly_the_registration_and_read_verbs():
     assert subprocess_verbs() == PUBLISHED_VERBS
 
 

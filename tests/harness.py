@@ -29,8 +29,9 @@ test harnesses do:
   owner of a timezone the system does not carry, which is the only way an
   unreadable record can exist (the module refuses to write one).
 
-Everything else -- garage-pass's garages, passes, registrations, endings and
-state changes; billing's registrations -- goes through the two command lines.
+Everything else -- garage-pass's garages, passes, registrations, endings,
+state changes, QRs and car replacements; billing's registrations -- goes
+through the two command lines.
 The CONNECTOR itself never touches any of this: it sees the two console
 scripts and nothing else.
 
@@ -295,6 +296,34 @@ class Pair:
     def gp_state(self, pass_id: str, garage: str, state: str, at: str) -> None:
         self.gp_run("set-state", "--garage", garage, "--pass-id", pass_id, "--state", state,
                     "--by", "the harness", "--reason", "the fixture", "--at", at)
+
+    def gp_enrols_at(self, garage: str, end: str) -> None:
+        self.gp_run("set-garage-enrols-at", "--garage", garage, "--enrols-at", end,
+                    "--by", "the harness", "--at", "2026-01-01T00:00:00+00:00",
+                    "--reason", "the fixture")
+
+    def gp_issue_qr(self, pass_id: str, garage: str, qr: str, starts_on: str) -> str:
+        """A QR for the pass, through issue-enrolment; returns its token."""
+        done = self.gp_run("issue-enrolment", "--garage", garage, "--pass-id", pass_id,
+                           "--enrolment-id", qr, "--starts-on", starts_on, "--days-valid", "30",
+                           "--by", "the harness", "--at", f"{starts_on}T08:00:00-06:00")
+        return json.loads(done.stdout)["token"]
+
+    def gp_redeem(self, garage: str, token: str, identity: str, at: str) -> dict:
+        """The lane presents the QR at an entry: the first use binds the car and
+        registers it on the pass, at every garage the pass names."""
+        return json.loads(self.gp_run("redeem-enrolment", "--garage", garage, "--token", token,
+                                      "--vehicle", identity, "--lane", "L1", "--direction",
+                                      "entry", "--at", at).stdout)
+
+    def gp_replace_car(self, garage: str, qr: str, new_qr: str, starts_on: str) -> str:
+        """replace-car: the old QR exit only, a new QR on the same pass; returns
+        the new QR's token."""
+        done = self.gp_run("replace-car", "--garage", garage, "--enrolment-id", qr,
+                           "--new-enrolment-id", new_qr, "--starts-on", starts_on,
+                           "--days-valid", "30", "--by", "the harness",
+                           "--reason", "rental swapped", "--at", f"{starts_on}T08:00:00-06:00")
+        return json.loads(done.stdout)["new"]["token"]
 
     def gp_show(self, pass_id: str, garage: str) -> dict:
         return json.loads(self.gp_run("show-pass", "--garage", garage, "--pass-id",
